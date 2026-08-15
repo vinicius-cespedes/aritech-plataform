@@ -41,19 +41,33 @@ enum ManagementAccountNature {
   NEUTRAL
 }
 
-enum ManagementAccountClassification {
-  REVENUE
-  TAX_DEDUCTION
+enum EconomicNature {
+  OPERATING_REVENUE
   DIRECT_COST
-  INDIRECT_COST
   OPERATING_EXPENSE
   FINANCIAL_INCOME
   FINANCIAL_EXPENSE
+  TAX
   INVESTMENT
   FINANCING
   EQUITY
   TRANSFER
-  OTHER
+  ADJUSTMENT
+}
+
+enum CostBehavior {
+  FIXED
+  VARIABLE
+  SEMI_VARIABLE
+  CONTEXT_DEPENDENT
+  NOT_APPLICABLE
+}
+
+enum CostDirectness {
+  DIRECT
+  INDIRECT
+  CONTEXT_DEPENDENT
+  NOT_APPLICABLE
 }
 
 enum CounterpartyType {
@@ -248,6 +262,11 @@ enum FinancialTransferStatus {
   CANCELLED
 }
 
+enum FinancialAllocationSourceType {
+  PAYABLE
+  RECEIVABLE
+}
+
 model FinancialAccount {
   id                   String                 @id @default(uuid()) @db.Uuid
   legalEntityId        String                 @db.Uuid @map("legal_entity_id")
@@ -279,29 +298,72 @@ model FinancialAccount {
   @@map("financial_accounts")
 }
 
-model ManagementAccount {
-  id             String                          @id @default(uuid()) @db.Uuid
-  code           String                          @unique @db.VarChar(40)
-  name           String                          @db.VarChar(180)
-  parentId       String?                         @db.Uuid @map("parent_id")
-  nature         ManagementAccountNature
-  classification ManagementAccountClassification
-  dreGroup       String?                         @db.VarChar(100) @map("dre_group")
-  cashFlowGroup  String?                         @db.VarChar(100) @map("cash_flow_group")
-  allowsPosting  Boolean                         @default(true) @map("allows_posting")
-  status         RecordStatus                    @default(ACTIVE)
-  validFrom      DateTime?                       @db.Date @map("valid_from")
-  validUntil     DateTime?                       @db.Date @map("valid_until")
-  createdAt      DateTime                        @default(now()) @db.Timestamptz(6) @map("created_at")
-  updatedAt      DateTime                        @updatedAt @db.Timestamptz(6) @map("updated_at")
+model DreGroup {
+  id           String       @id @default(uuid()) @db.Uuid
+  code         String       @unique @db.VarChar(40)
+  name         String       @db.VarChar(180)
+  parentId     String?      @db.Uuid @map("parent_id")
+  displayOrder Int          @default(0) @map("display_order")
+  status       RecordStatus @default(ACTIVE)
+  createdAt    DateTime     @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt    DateTime     @updatedAt @db.Timestamptz(6) @map("updated_at")
 
-  parent      ManagementAccount?  @relation("ManagementAccountHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
-  children    ManagementAccount[] @relation("ManagementAccountHierarchy")
-  payables    Payable[]
-  receivables Receivable[]
+  parent             DreGroup?           @relation("DreGroupHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children           DreGroup[]          @relation("DreGroupHierarchy")
+  managementAccounts ManagementAccount[]
 
   @@index([parentId])
-  @@index([classification, status])
+  @@index([status, displayOrder])
+  @@map("dre_groups")
+}
+
+model CashFlowGroup {
+  id           String       @id @default(uuid()) @db.Uuid
+  code         String       @unique @db.VarChar(40)
+  name         String       @db.VarChar(180)
+  parentId     String?      @db.Uuid @map("parent_id")
+  displayOrder Int          @default(0) @map("display_order")
+  status       RecordStatus @default(ACTIVE)
+  createdAt    DateTime     @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt    DateTime     @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  parent             CashFlowGroup?     @relation("CashFlowGroupHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children           CashFlowGroup[]    @relation("CashFlowGroupHierarchy")
+  managementAccounts ManagementAccount[]
+
+  @@index([parentId])
+  @@index([status, displayOrder])
+  @@map("cash_flow_groups")
+}
+
+model ManagementAccount {
+  id                    String                  @id @default(uuid()) @db.Uuid
+  code                  String                  @unique @db.VarChar(40)
+  name                  String                  @db.VarChar(180)
+  parentId              String?                 @db.Uuid @map("parent_id")
+  nature                ManagementAccountNature
+  economicNature        EconomicNature          @map("economic_nature")
+  defaultCostBehavior   CostBehavior            @default(NOT_APPLICABLE) @map("default_cost_behavior")
+  defaultCostDirectness CostDirectness           @default(NOT_APPLICABLE) @map("default_cost_directness")
+  dreGroupId            String?                 @db.Uuid @map("dre_group_id")
+  cashFlowGroupId       String?                 @db.Uuid @map("cash_flow_group_id")
+  allowsPosting         Boolean                 @default(true) @map("allows_posting")
+  status                RecordStatus            @default(ACTIVE)
+  validFrom             DateTime?               @db.Date @map("valid_from")
+  validUntil            DateTime?               @db.Date @map("valid_until")
+  createdAt             DateTime                @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt             DateTime                @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  parent         ManagementAccount?  @relation("ManagementAccountHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children       ManagementAccount[] @relation("ManagementAccountHierarchy")
+  dreGroup       DreGroup?           @relation(fields: [dreGroupId], references: [id], onDelete: Restrict)
+  cashFlowGroup  CashFlowGroup?      @relation(fields: [cashFlowGroupId], references: [id], onDelete: Restrict)
+  allocations    FinancialClassificationAllocation[]
+
+  @@index([parentId])
+  @@index([economicNature, status])
+  @@index([dreGroupId])
+  @@index([cashFlowGroupId])
   @@map("management_accounts")
 }
 
@@ -319,15 +381,14 @@ model CostCenter {
 
   parent      CostCenter?  @relation("CostCenterHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
   children    CostCenter[] @relation("CostCenterHierarchy")
-  payables    Payable[]
-  receivables Receivable[]
+  allocations FinancialClassificationAllocation[]
 
   @@index([parentId])
   @@index([status])
   @@map("cost_centers")
 }
 
-model ResultCenter {
+model BusinessLine {
   id         String       @id @default(uuid()) @db.Uuid
   code       String       @unique @db.VarChar(40)
   name       String       @db.VarChar(180)
@@ -338,13 +399,13 @@ model ResultCenter {
   createdAt  DateTime     @default(now()) @db.Timestamptz(6) @map("created_at")
   updatedAt  DateTime     @updatedAt @db.Timestamptz(6) @map("updated_at")
 
-  parent      ResultCenter?  @relation("ResultCenterHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
-  children    ResultCenter[] @relation("ResultCenterHierarchy")
-  receivables Receivable[]
+  parent      BusinessLine?  @relation("BusinessLineHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children    BusinessLine[] @relation("BusinessLineHierarchy")
+  allocations FinancialClassificationAllocation[]
 
   @@index([parentId])
   @@index([status])
-  @@map("result_centers")
+  @@map("business_lines")
 }
 
 model FinancialPeriod {
@@ -369,42 +430,37 @@ model FinancialPeriod {
 }
 
 model Payable {
-  id                  String            @id @default(uuid()) @db.Uuid
-  legalEntityId       String            @db.Uuid @map("legal_entity_id")
-  counterpartyId      String            @db.Uuid @map("counterparty_id")
-  counterpartyType    CounterpartyType  @map("counterparty_type")
-  description         String            @db.Text
-  documentNumber      String?           @db.VarChar(100) @map("document_number")
-  documentType        DocumentType?     @map("document_type")
-  issueDate           DateTime?         @db.Date @map("issue_date")
-  competenceDate      DateTime          @db.Date @map("competence_date")
-  originalAmount      Decimal           @db.Decimal(19, 4) @map("original_amount")
-  currency            Currency          @default(BRL)
-  status              PayableStatus     @default(DRAFT)
-  sourceType          PayableSourceType @map("source_type")
-  sourceId            String?           @db.Uuid @map("source_id")
-  projectId           String?           @db.Uuid @map("project_id")
-  costCenterId        String?           @db.Uuid @map("cost_center_id")
-  managementAccountId String            @db.Uuid @map("management_account_id")
-  contractId          String?           @db.Uuid @map("contract_id")
-  purchaseOrderId     String?           @db.Uuid @map("purchase_order_id")
-  paymentTermId       String?           @db.Uuid @map("payment_term_id")
-  createdBy           String            @db.Uuid @map("created_by")
-  createdAt           DateTime          @default(now()) @db.Timestamptz(6) @map("created_at")
-  updatedAt           DateTime          @updatedAt @db.Timestamptz(6) @map("updated_at")
-  version             Int               @default(1)
+  id              String            @id @default(uuid()) @db.Uuid
+  legalEntityId   String            @db.Uuid @map("legal_entity_id")
+  counterpartyId  String            @db.Uuid @map("counterparty_id")
+  counterpartyType CounterpartyType  @map("counterparty_type")
+  description     String            @db.Text
+  documentNumber  String?           @db.VarChar(100) @map("document_number")
+  documentType    DocumentType?     @map("document_type")
+  issueDate       DateTime?         @db.Date @map("issue_date")
+  competenceDate  DateTime          @db.Date @map("competence_date")
+  originalAmount  Decimal           @db.Decimal(19, 4) @map("original_amount")
+  currency        Currency          @default(BRL)
+  status          PayableStatus     @default(DRAFT)
+  sourceType      PayableSourceType @map("source_type")
+  sourceId        String?           @db.Uuid @map("source_id")
+  contractId      String?           @db.Uuid @map("contract_id")
+  purchaseOrderId String?           @db.Uuid @map("purchase_order_id")
+  paymentTermId   String?           @db.Uuid @map("payment_term_id")
+  createdBy       String            @db.Uuid @map("created_by")
+  createdAt       DateTime          @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt       DateTime          @updatedAt @db.Timestamptz(6) @map("updated_at")
+  version         Int               @default(1)
 
-  costCenter        CostCenter?       @relation(fields: [costCenterId], references: [id], onDelete: Restrict)
-  managementAccount ManagementAccount @relation(fields: [managementAccountId], references: [id], onDelete: Restrict)
-  installments      PayableInstallment[]
+  installments PayableInstallment[]
+  allocations  FinancialClassificationAllocation[]
 
   @@index([legalEntityId, status])
   @@index([counterpartyId, status])
   @@index([competenceDate])
-  @@index([projectId])
-  @@index([costCenterId])
-  @@index([managementAccountId])
   @@index([documentNumber])
+  @@index([contractId])
+  @@index([purchaseOrderId])
   @@map("payables")
 }
 
@@ -493,10 +549,6 @@ model Receivable {
   status                ReceivableStatus     @default(DRAFT)
   sourceType            ReceivableSourceType @map("source_type")
   sourceId              String?              @db.Uuid @map("source_id")
-  projectId             String?              @db.Uuid @map("project_id")
-  costCenterId          String?              @db.Uuid @map("cost_center_id")
-  resultCenterId        String?              @db.Uuid @map("result_center_id")
-  managementAccountId   String               @db.Uuid @map("management_account_id")
   contractId            String?              @db.Uuid @map("contract_id")
   billingScheduleItemId String?              @db.Uuid @map("billing_schedule_item_id")
   measurementId         String?              @db.Uuid @map("measurement_id")
@@ -505,19 +557,16 @@ model Receivable {
   updatedAt             DateTime             @updatedAt @db.Timestamptz(6) @map("updated_at")
   version               Int                  @default(1)
 
-  costCenter        CostCenter?       @relation(fields: [costCenterId], references: [id], onDelete: Restrict)
-  resultCenter      ResultCenter?     @relation(fields: [resultCenterId], references: [id], onDelete: Restrict)
-  managementAccount ManagementAccount @relation(fields: [managementAccountId], references: [id], onDelete: Restrict)
-  installments      ReceivableInstallment[]
+  installments ReceivableInstallment[]
+  allocations  FinancialClassificationAllocation[]
 
   @@index([legalEntityId, status])
   @@index([customerId, status])
   @@index([competenceDate])
-  @@index([projectId])
-  @@index([costCenterId])
-  @@index([resultCenterId])
-  @@index([managementAccountId])
   @@index([documentNumber])
+  @@index([contractId])
+  @@index([billingScheduleItemId])
+  @@index([measurementId])
   @@map("receivables")
 }
 
@@ -537,7 +586,7 @@ model ReceivableInstallment {
   createdAt           DateTime                    @default(now()) @db.Timestamptz(6) @map("created_at")
   updatedAt           DateTime                    @updatedAt @db.Timestamptz(6) @map("updated_at")
 
-  receivable        Receivable          @relation(fields: [receivableId], references: [id], onDelete: Restrict)
+  receivable         Receivable          @relation(fields: [receivableId], references: [id], onDelete: Restrict)
   receiptAllocations ReceiptAllocation[]
 
   @@unique([receivableId, sequence])
@@ -589,6 +638,43 @@ model ReceiptAllocation {
   @@unique([receiptId, receivableInstallmentId])
   @@index([receivableInstallmentId])
   @@map("receipt_allocations")
+}
+
+model FinancialClassificationAllocation {
+  id                  String                        @id @default(uuid()) @db.Uuid
+  sourceType          FinancialAllocationSourceType @map("source_type")
+  payableId           String?                       @db.Uuid @map("payable_id")
+  receivableId        String?                       @db.Uuid @map("receivable_id")
+  managementAccountId String                        @db.Uuid @map("management_account_id")
+  costCenterId        String?                       @db.Uuid @map("cost_center_id")
+  businessLineId      String?                       @db.Uuid @map("business_line_id")
+  projectId           String?                       @db.Uuid @map("project_id")
+  contractId          String?                       @db.Uuid @map("contract_id")
+  amount              Decimal                       @db.Decimal(19, 4)
+  percentage          Decimal?                      @db.Decimal(9, 6)
+  competenceDate      DateTime                      @db.Date @map("competence_date")
+  costBehavior        CostBehavior                  @map("cost_behavior")
+  costDirectness      CostDirectness                @map("cost_directness")
+  notes               String?                       @db.Text
+  createdBy           String                        @db.Uuid @map("created_by")
+  createdAt           DateTime                      @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt           DateTime                      @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  payable           Payable?          @relation(fields: [payableId], references: [id], onDelete: Restrict)
+  receivable        Receivable?       @relation(fields: [receivableId], references: [id], onDelete: Restrict)
+  managementAccount ManagementAccount @relation(fields: [managementAccountId], references: [id], onDelete: Restrict)
+  costCenter        CostCenter?       @relation(fields: [costCenterId], references: [id], onDelete: Restrict)
+  businessLine      BusinessLine?     @relation(fields: [businessLineId], references: [id], onDelete: Restrict)
+
+  @@index([payableId])
+  @@index([receivableId])
+  @@index([managementAccountId])
+  @@index([costCenterId])
+  @@index([businessLineId])
+  @@index([projectId])
+  @@index([contractId])
+  @@index([competenceDate])
+  @@map("financial_classification_allocations")
 }
 
 model BankStatementImport {
