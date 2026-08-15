@@ -311,6 +311,7 @@ model DreGroup {
   parent             DreGroup?           @relation("DreGroupHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
   children           DreGroup[]          @relation("DreGroupHierarchy")
   managementAccounts ManagementAccount[]
+  allocations        FinancialClassificationAllocation[]
 
   @@index([parentId])
   @@index([status, displayOrder])
@@ -330,6 +331,7 @@ model CashFlowGroup {
   parent             CashFlowGroup?     @relation("CashFlowGroupHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
   children           CashFlowGroup[]    @relation("CashFlowGroupHierarchy")
   managementAccounts ManagementAccount[]
+  allocations        FinancialClassificationAllocation[]
 
   @@index([parentId])
   @@index([status, displayOrder])
@@ -646,6 +648,9 @@ model FinancialClassificationAllocation {
   payableId           String?                       @db.Uuid @map("payable_id")
   receivableId        String?                       @db.Uuid @map("receivable_id")
   managementAccountId String                        @db.Uuid @map("management_account_id")
+  economicNature      EconomicNature                @map("economic_nature")
+  dreGroupId          String?                       @db.Uuid @map("dre_group_id")
+  cashFlowGroupId     String?                       @db.Uuid @map("cash_flow_group_id")
   costCenterId        String?                       @db.Uuid @map("cost_center_id")
   businessLineId      String?                       @db.Uuid @map("business_line_id")
   projectId           String?                       @db.Uuid @map("project_id")
@@ -663,12 +668,17 @@ model FinancialClassificationAllocation {
   payable           Payable?          @relation(fields: [payableId], references: [id], onDelete: Restrict)
   receivable        Receivable?       @relation(fields: [receivableId], references: [id], onDelete: Restrict)
   managementAccount ManagementAccount @relation(fields: [managementAccountId], references: [id], onDelete: Restrict)
+  dreGroup          DreGroup?         @relation(fields: [dreGroupId], references: [id], onDelete: Restrict)
+  cashFlowGroup     CashFlowGroup?    @relation(fields: [cashFlowGroupId], references: [id], onDelete: Restrict)
   costCenter        CostCenter?       @relation(fields: [costCenterId], references: [id], onDelete: Restrict)
   businessLine      BusinessLine?     @relation(fields: [businessLineId], references: [id], onDelete: Restrict)
 
   @@index([payableId])
   @@index([receivableId])
   @@index([managementAccountId])
+  @@index([economicNature])
+  @@index([dreGroupId])
+  @@index([cashFlowGroupId])
   @@index([costCenterId])
   @@index([businessLineId])
   @@index([projectId])
