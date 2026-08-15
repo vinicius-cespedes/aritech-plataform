@@ -1,0 +1,56 @@
+name: Migration Preview
+
+on:
+  push:
+    branches:
+      - 'agent/**'
+    paths:
+      - 'packages/database/prisma/schema.prisma'
+      - '.github/workflows/migration-preview.yml'
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: aritech
+          POSTGRES_PASSWORD: aritech
+          POSTGRES_DB: aritech
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aritech -d aritech"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://aritech:aritech@localhost:5432/aritech?schema=public
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Generate initial migration
+        working-directory: packages/database
+        run: pnpm exec prisma migrate dev --name init_financial --create-only
+
+      - name: Upload migration
+        uses: actions/upload-artifact@v4
+        with:
+          name: prisma-migration-preview
+          path: packages/database/prisma/migrations
+          if-no-files-found: error
