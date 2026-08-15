@@ -1,0 +1,17 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Bootstrap schema only. Financial entities will be introduced from the
+// accepted domain documents and ADRs in a dedicated migration.
+model SystemBootstrap {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("system_bootstrap")
+}
