@@ -37,8 +37,5 @@ jobs:
       - name: Generate Prisma client
         run: pnpm db:generate
 
-      - name: Build API
-        run: pnpm --filter @aritech/api build
-
-      - name: Build web
-        run: pnpm --filter @aritech/web build
+      - name: Build workspace
+        run: pnpm build
