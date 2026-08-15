@@ -11,6 +11,20 @@ on:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: aritech
+          POSTGRES_PASSWORD: aritech
+          POSTGRES_DB: aritech
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aritech -d aritech"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
       DATABASE_URL: postgresql://aritech:aritech@localhost:5432/aritech?schema=public
     steps:
@@ -35,6 +49,9 @@ jobs:
 
       - name: Generate Prisma client
         run: pnpm db:generate
+
+      - name: Apply Prisma migrations
+        run: pnpm --filter @aritech/database exec prisma migrate deploy
 
       - name: Build workspace
         run: pnpm build
