@@ -53,5 +53,11 @@ jobs:
       - name: Apply Prisma migrations
         run: pnpm --filter @aritech/database exec prisma migrate deploy
 
+      - name: Seed managerial catalog
+        run: pnpm --filter @aritech/database seed
+
+      - name: Verify seed idempotency
+        run: pnpm --filter @aritech/database seed
+
       - name: Build workspace
         run: pnpm build
