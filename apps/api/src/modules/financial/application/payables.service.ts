@@ -21,7 +21,9 @@ export class PayablesService {
 
   async create(input: CreatePayableDto) {
     const total = new Prisma.Decimal(input.originalAmount);
-    const supplier = await prisma.supplier.findFirst({ where: { id: input.supplierId, legalEntityId: input.legalEntityId, status: 'ACTIVE' } });
+    const supplier = await prisma.supplier.findFirst({
+      where: { id: input.supplierId, legalEntityId: input.legalEntityId, status: 'ACTIVE' },
+    });
     if (!supplier) throw new NotFoundException('SUPPLIER_NOT_FOUND');
     if (!input.allocations?.length) throw new BadRequestException('AT_LEAST_ONE_ALLOCATION_REQUIRED');
 
@@ -31,11 +33,15 @@ export class PayablesService {
       }
     }
 
-    const allocatedTotal = input.allocations.reduce((sum, a) => sum.plus(new Prisma.Decimal(a.amount)), new Prisma.Decimal(0));
+    const allocatedTotal = input.allocations.reduce(
+      (sum, allocation) => sum.plus(new Prisma.Decimal(allocation.amount)),
+      new Prisma.Decimal(0),
+    );
     if (!allocatedTotal.equals(total)) throw new BadRequestException('ALLOCATION_TOTAL_MUST_EQUAL_PAYABLE_TOTAL');
 
-    const installments = await this.resolveInstallments(input, total);
-    const installmentTotal = installments.reduce((sum, i) => sum.plus(i.amount), new Prisma.Decimal(0));
+    const effectivePaymentTermId = input.paymentTermId ?? supplier.defaultPaymentTermId ?? undefined;
+    const installments = await this.resolveInstallments(input, total, effectivePaymentTermId);
+    const installmentTotal = installments.reduce((sum, installment) => sum.plus(installment.amount), new Prisma.Decimal(0));
     if (!installmentTotal.equals(total)) throw new BadRequestException('INSTALLMENT_TOTAL_MUST_EQUAL_PAYABLE_TOTAL');
 
     const policy = await prisma.payableApprovalPolicy.findUnique({ where: { legalEntityId: input.legalEntityId } });
@@ -44,10 +50,12 @@ export class PayablesService {
 
     return prisma.$transaction(async (tx) => {
       const accountDefaults = await tx.managementAccount.findMany({
-        where: { id: { in: input.allocations.map((a) => a.managementAccountId) }, status: 'ACTIVE' },
+        where: { id: { in: input.allocations.map((allocation) => allocation.managementAccountId) }, status: 'ACTIVE' },
       });
-      const defaultsById = new Map(accountDefaults.map((a) => [a.id, a]));
-      if (defaultsById.size !== new Set(input.allocations.map((a) => a.managementAccountId)).size) throw new BadRequestException('INVALID_MANAGEMENT_ACCOUNT');
+      const defaultsById = new Map(accountDefaults.map((account) => [account.id, account]));
+      if (defaultsById.size !== new Set(input.allocations.map((allocation) => allocation.managementAccountId)).size) {
+        throw new BadRequestException('INVALID_MANAGEMENT_ACCOUNT');
+      }
 
       return tx.payable.create({
         data: {
@@ -66,28 +74,40 @@ export class PayablesService {
           sourceId: input.sourceId,
           contractId: input.contractId,
           purchaseOrderId: input.purchaseOrderId,
-          paymentTermId: input.paymentTermId,
+          paymentTermId: effectivePaymentTermId,
           createdBy: input.createdBy,
-          installments: { create: installments.map((i, index) => ({ sequence: index + 1, dueDate: i.dueDate, originalDueDate: i.dueDate, expectedPaymentDate: i.dueDate, originalAmount: i.amount, openAmount: i.amount, paymentMethod: i.paymentMethod })) },
-          allocations: { create: input.allocations.map((a) => {
-            const account = defaultsById.get(a.managementAccountId)!;
-            return {
-              sourceType: 'PAYABLE',
-              managementAccountId: a.managementAccountId,
-              economicNature: a.economicNature,
-              dreGroupId: a.dreGroupId ?? account.dreGroupId,
-              cashFlowGroupId: a.cashFlowGroupId ?? account.cashFlowGroupId,
-              costCenterId: a.costCenterId,
-              businessLineId: a.businessLineId,
-              projectId: a.projectId,
-              contractId: a.contractId ?? input.contractId,
-              amount: a.amount,
-              competenceDate: new Date(a.competenceDate ?? input.competenceDate),
-              costBehavior: a.costBehavior,
-              costDirectness: a.costDirectness,
-              createdBy: input.createdBy,
-            };
-          }) },
+          installments: {
+            create: installments.map((installment, index) => ({
+              sequence: index + 1,
+              dueDate: installment.dueDate,
+              originalDueDate: installment.dueDate,
+              expectedPaymentDate: installment.dueDate,
+              originalAmount: installment.amount,
+              openAmount: installment.amount,
+              paymentMethod: installment.paymentMethod,
+            })),
+          },
+          allocations: {
+            create: input.allocations.map((allocation) => {
+              const account = defaultsById.get(allocation.managementAccountId)!;
+              return {
+                sourceType: 'PAYABLE',
+                managementAccountId: allocation.managementAccountId,
+                economicNature: allocation.economicNature,
+                dreGroupId: allocation.dreGroupId ?? account.dreGroupId,
+                cashFlowGroupId: allocation.cashFlowGroupId ?? account.cashFlowGroupId,
+                costCenterId: allocation.costCenterId,
+                businessLineId: allocation.businessLineId,
+                projectId: allocation.projectId,
+                contractId: allocation.contractId ?? input.contractId,
+                amount: allocation.amount,
+                competenceDate: new Date(allocation.competenceDate ?? input.competenceDate),
+                costBehavior: allocation.costBehavior,
+                costDirectness: allocation.costDirectness,
+                createdBy: input.createdBy,
+              };
+            }),
+          },
           documents: input.documents ? { create: input.documents } : undefined,
         },
         include: { installments: true, allocations: true, documents: true, paymentTerm: true },
@@ -95,21 +115,33 @@ export class PayablesService {
     });
   }
 
-  private async resolveInstallments(input: CreatePayableDto, total: Prisma.Decimal) {
+  private async resolveInstallments(input: CreatePayableDto, total: Prisma.Decimal, paymentTermId?: string) {
     if (input.installments?.length) {
-      return input.installments.map((i) => ({ dueDate: new Date(i.dueDate), amount: new Prisma.Decimal(i.amount), paymentMethod: i.paymentMethod }));
+      return input.installments.map((installment) => ({
+        dueDate: new Date(installment.dueDate),
+        amount: new Prisma.Decimal(installment.amount),
+        paymentMethod: installment.paymentMethod,
+      }));
     }
-    if (!input.paymentTermId) throw new BadRequestException('PAYMENT_TERM_OR_INSTALLMENTS_REQUIRED');
-    const term = await prisma.paymentTerm.findUnique({ where: { id: input.paymentTermId }, include: { rules: { orderBy: { sequence: 'asc' } } } });
+
+    if (!paymentTermId) throw new BadRequestException('PAYMENT_TERM_OR_INSTALLMENTS_REQUIRED');
+    const term = await prisma.paymentTerm.findUnique({
+      where: { id: paymentTermId },
+      include: { rules: { orderBy: { sequence: 'asc' } } },
+    });
     if (!term || !term.rules.length) throw new BadRequestException('INVALID_PAYMENT_TERM');
+
     const baseValue = input.paymentTermBaseDate ?? input.issueDate;
     if (!baseValue) throw new BadRequestException('PAYMENT_TERM_BASE_DATE_REQUIRED');
+
     const base = new Date(baseValue);
     let assigned = new Prisma.Decimal(0);
     return term.rules.map((rule, index) => {
       const dueDate = new Date(base);
       dueDate.setUTCDate(dueDate.getUTCDate() + rule.daysAfterBase);
-      const amount = index === term.rules.length - 1 ? total.minus(assigned) : total.mul(rule.percentage).div(100).toDecimalPlaces(4);
+      const amount = index === term.rules.length - 1
+        ? total.minus(assigned)
+        : total.mul(rule.percentage).div(100).toDecimalPlaces(4);
       assigned = assigned.plus(amount);
       return { dueDate, amount, paymentMethod: undefined };
     });
