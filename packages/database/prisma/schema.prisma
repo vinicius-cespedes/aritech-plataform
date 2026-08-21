@@ -267,6 +267,126 @@ enum FinancialAllocationSourceType {
   RECEIVABLE
 }
 
+model PaymentTerm {
+  id          String       @id @default(uuid()) @db.Uuid
+  code        String       @unique @db.VarChar(40)
+  name        String       @db.VarChar(160)
+  description String?      @db.Text
+  status      RecordStatus @default(ACTIVE)
+  createdAt   DateTime     @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt   DateTime     @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  rules     PaymentTermInstallmentRule[]
+  suppliers Supplier[]
+  payables  Payable[]
+
+  @@map("payment_terms")
+}
+
+model PaymentTermInstallmentRule {
+  id             String   @id @default(uuid()) @db.Uuid
+  paymentTermId  String   @db.Uuid @map("payment_term_id")
+  sequence       Int
+  daysAfterBase  Int      @map("days_after_base")
+  percentage     Decimal  @db.Decimal(9, 6)
+  createdAt      DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  paymentTerm PaymentTerm @relation(fields: [paymentTermId], references: [id], onDelete: Cascade)
+
+  @@unique([paymentTermId, sequence])
+  @@index([paymentTermId])
+  @@map("payment_term_installment_rules")
+}
+
+model Supplier {
+  id                   String       @id @default(uuid()) @db.Uuid
+  legalEntityId        String       @db.Uuid @map("legal_entity_id")
+  legalName            String       @db.VarChar(200) @map("legal_name")
+  tradeName            String?      @db.VarChar(200) @map("trade_name")
+  taxDocument          String       @db.VarChar(20) @map("tax_document")
+  contactName          String?      @db.VarChar(160) @map("contact_name")
+  contactEmail         String?      @db.VarChar(200) @map("contact_email")
+  contactPhone         String?      @db.VarChar(40) @map("contact_phone")
+  defaultPaymentTermId String?      @db.Uuid @map("default_payment_term_id")
+  status               RecordStatus @default(ACTIVE)
+  notes                String?      @db.Text
+  createdAt            DateTime     @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt            DateTime     @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  defaultPaymentTerm PaymentTerm?         @relation(fields: [defaultPaymentTermId], references: [id], onDelete: SetNull)
+  bankAccounts       SupplierBankAccount[]
+  pixKeys            SupplierPixKey[]
+
+  @@unique([legalEntityId, taxDocument])
+  @@index([legalEntityId, status])
+  @@index([legalName])
+  @@map("suppliers")
+}
+
+model SupplierBankAccount {
+  id            String       @id @default(uuid()) @db.Uuid
+  supplierId    String       @db.Uuid @map("supplier_id")
+  bankCode      String?      @db.VarChar(20) @map("bank_code")
+  bankName      String       @db.VarChar(160) @map("bank_name")
+  branch        String?      @db.VarChar(30)
+  accountNumber String       @db.VarChar(60) @map("account_number")
+  accountDigit  String?      @db.VarChar(10) @map("account_digit")
+  holderName    String?      @db.VarChar(200) @map("holder_name")
+  holderDocument String?     @db.VarChar(20) @map("holder_document")
+  isDefault     Boolean      @default(false) @map("is_default")
+  status        RecordStatus @default(ACTIVE)
+  createdAt     DateTime     @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt     DateTime     @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@index([supplierId, status])
+  @@map("supplier_bank_accounts")
+}
+
+model SupplierPixKey {
+  id         String       @id @default(uuid()) @db.Uuid
+  supplierId String       @db.Uuid @map("supplier_id")
+  keyType    String       @db.VarChar(30) @map("key_type")
+  keyValue   String       @db.VarChar(255) @map("key_value")
+  isDefault  Boolean      @default(false) @map("is_default")
+  status     RecordStatus @default(ACTIVE)
+  createdAt  DateTime     @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt  DateTime     @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@unique([supplierId, keyValue])
+  @@index([supplierId, status])
+  @@map("supplier_pix_keys")
+}
+
+model PayableApprovalPolicy {
+  id                      String   @id @default(uuid()) @db.Uuid
+  legalEntityId           String   @unique @db.Uuid @map("legal_entity_id")
+  approvalRequiredFrom    Decimal  @default(0) @db.Decimal(19, 4) @map("approval_required_from")
+  updatedBy               String   @db.Uuid @map("updated_by")
+  createdAt               DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt               DateTime @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  @@map("payable_approval_policies")
+}
+
+model PayableDocument {
+  id         String       @id @default(uuid()) @db.Uuid
+  payableId  String       @db.Uuid @map("payable_id")
+  documentId String       @db.Uuid @map("document_id")
+  type       DocumentType?
+  label      String?      @db.VarChar(160)
+  createdAt  DateTime     @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  payable Payable @relation(fields: [payableId], references: [id], onDelete: Cascade)
+
+  @@unique([payableId, documentId])
+  @@index([payableId])
+  @@map("payable_documents")
+}
+
 model FinancialAccount {
   id                   String                 @id @default(uuid()) @db.Uuid
   legalEntityId        String                 @db.Uuid @map("legal_entity_id")
@@ -456,6 +576,8 @@ model Payable {
 
   installments PayableInstallment[]
   allocations  FinancialClassificationAllocation[]
+  documents    PayableDocument[]
+  paymentTerm  PaymentTerm? @relation(fields: [paymentTermId], references: [id], onDelete: SetNull)
 
   @@index([legalEntityId, status])
   @@index([counterpartyId, status])
