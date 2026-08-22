@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { FinancialAccountsController } from './presentation/financial-accounts.controller';
 import { FinancialAccountsService } from './application/financial-accounts.service';
+import { FinancialCatalogsController } from './presentation/financial-catalogs.controller';
+import { FinancialCatalogsService } from './application/financial-catalogs.service';
 import { SuppliersController } from './presentation/suppliers.controller';
 import { SuppliersService } from './application/suppliers.service';
 import { PaymentTermsController } from './presentation/payment-terms.controller';
@@ -17,25 +19,7 @@ import { BankReconciliationController } from './presentation/bank-reconciliation
 import { BankReconciliationService } from './application/bank-reconciliation.service';
 
 @Module({
-  controllers: [
-    FinancialAccountsController,
-    SuppliersController,
-    PaymentTermsController,
-    PayablesController,
-    PayableApprovalPolicyController,
-    PayableApprovalsController,
-    PaymentsController,
-    BankReconciliationController,
-  ],
-  providers: [
-    FinancialAccountsService,
-    SuppliersService,
-    PaymentTermsService,
-    PayablesService,
-    PayableApprovalPolicyService,
-    PayableApprovalsService,
-    PaymentsService,
-    BankReconciliationService,
-  ],
+  controllers: [FinancialAccountsController, FinancialCatalogsController, SuppliersController, PaymentTermsController, PayablesController, PayableApprovalPolicyController, PayableApprovalsController, PaymentsController, BankReconciliationController],
+  providers: [FinancialAccountsService, FinancialCatalogsService, SuppliersService, PaymentTermsService, PayablesService, PayableApprovalPolicyService, PayableApprovalsService, PaymentsService, BankReconciliationService],
 })
 export class FinancialModule {}
