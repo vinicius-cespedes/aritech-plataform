@@ -13,6 +13,8 @@ import { PayableApprovalsController } from './presentation/payable-approvals.con
 import { PayableApprovalsService } from './application/payable-approvals.service';
 import { PaymentsController } from './presentation/payments.controller';
 import { PaymentsService } from './application/payments.service';
+import { BankReconciliationController } from './presentation/bank-reconciliation.controller';
+import { BankReconciliationService } from './application/bank-reconciliation.service';
 
 @Module({
   controllers: [
@@ -23,6 +25,7 @@ import { PaymentsService } from './application/payments.service';
     PayableApprovalPolicyController,
     PayableApprovalsController,
     PaymentsController,
+    BankReconciliationController,
   ],
   providers: [
     FinancialAccountsService,
@@ -32,6 +35,7 @@ import { PaymentsService } from './application/payments.service';
     PayableApprovalPolicyService,
     PayableApprovalsService,
     PaymentsService,
+    BankReconciliationService,
   ],
 })
 export class FinancialModule {}
