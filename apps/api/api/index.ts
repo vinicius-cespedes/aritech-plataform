@@ -1,4 +1,3 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from '../src/app.module';
@@ -18,7 +17,7 @@ async function bootstrap() {
   return handler;
 }
 
-export default async function vercelHandler(req: VercelRequest, res: VercelResponse) {
+export default async function vercelHandler(req: any, res: any) {
   const httpHandler = await bootstrap();
   return httpHandler(req, res);
 }
