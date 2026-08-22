@@ -76,6 +76,7 @@ export class BankReconciliationService {
         createdBy: input.createdBy,
         transactions: {
           create: imported.map((transaction) => ({
+            financialAccount: { connect: { id: input.financialAccountId } },
             externalId: transaction.externalId,
             transactionDate: transaction.transactionDate,
             postingDate: transaction.transactionDate,
