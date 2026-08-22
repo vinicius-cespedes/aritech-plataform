@@ -9,6 +9,10 @@ import { PayablesController } from './presentation/payables.controller';
 import { PayablesService } from './application/payables.service';
 import { PayableApprovalPolicyController } from './presentation/payable-approval-policy.controller';
 import { PayableApprovalPolicyService } from './application/payable-approval-policy.service';
+import { PayableApprovalsController } from './presentation/payable-approvals.controller';
+import { PayableApprovalsService } from './application/payable-approvals.service';
+import { PaymentsController } from './presentation/payments.controller';
+import { PaymentsService } from './application/payments.service';
 
 @Module({
   controllers: [
@@ -17,6 +21,8 @@ import { PayableApprovalPolicyService } from './application/payable-approval-pol
     PaymentTermsController,
     PayablesController,
     PayableApprovalPolicyController,
+    PayableApprovalsController,
+    PaymentsController,
   ],
   providers: [
     FinancialAccountsService,
@@ -24,6 +30,8 @@ import { PayableApprovalPolicyService } from './application/payable-approval-pol
     PaymentTermsService,
     PayablesService,
     PayableApprovalPolicyService,
+    PayableApprovalsService,
+    PaymentsService,
   ],
 })
 export class FinancialModule {}
