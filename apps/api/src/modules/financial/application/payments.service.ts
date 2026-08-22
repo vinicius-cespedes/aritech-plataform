@@ -40,7 +40,12 @@ export class PaymentsService {
     const normalized = input.allocations.map((allocation) => {
       const installment = installmentsById.get(allocation.payableInstallmentId)!;
       if (installment.payable.legalEntityId !== input.legalEntityId) throw new BadRequestException('LEGAL_ENTITY_MISMATCH');
-      if (![PayableStatus.APPROVED, PayableStatus.OPEN, PayableStatus.PARTIALLY_SETTLED].includes(installment.payable.status)) {
+      const payableStatus = installment.payable.status;
+      if (
+        payableStatus !== PayableStatus.APPROVED &&
+        payableStatus !== PayableStatus.OPEN &&
+        payableStatus !== PayableStatus.PARTIALLY_SETTLED
+      ) {
         throw new BadRequestException('PAYABLE_NOT_APPROVED_FOR_PAYMENT');
       }
 
