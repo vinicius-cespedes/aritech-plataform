@@ -1,0 +1,981 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Currency {
+  BRL
+  USD
+  EUR
+}
+
+enum RecordStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum FinancialAccountType {
+  CHECKING
+  SAVINGS
+  CASH
+  INVESTMENT
+  PAYMENT
+  DIGITAL_WALLET
+  INTERNATIONAL
+  OTHER
+}
+
+enum FinancialAccountStatus {
+  ACTIVE
+  INACTIVE
+  CLOSED
+}
+
+enum ManagementAccountNature {
+  DEBIT
+  CREDIT
+  NEUTRAL
+}
+
+enum EconomicNature {
+  OPERATING_REVENUE
+  DIRECT_COST
+  OPERATING_EXPENSE
+  FINANCIAL_INCOME
+  FINANCIAL_EXPENSE
+  TAX
+  INVESTMENT
+  FINANCING
+  EQUITY
+  TRANSFER
+  ADJUSTMENT
+}
+
+enum CostBehavior {
+  FIXED
+  VARIABLE
+  SEMI_VARIABLE
+  CONTEXT_DEPENDENT
+  NOT_APPLICABLE
+}
+
+enum CostDirectness {
+  DIRECT
+  INDIRECT
+  CONTEXT_DEPENDENT
+  NOT_APPLICABLE
+}
+
+enum CounterpartyType {
+  CUSTOMER
+  SUPPLIER
+  EMPLOYEE
+  GOVERNMENT
+  BANK
+  PARTNER
+  OTHER
+}
+
+enum DocumentType {
+  INVOICE
+  SERVICE_INVOICE
+  PRODUCT_INVOICE
+  RECEIPT
+  CONTRACT
+  TAX_GUIDE
+  PAYROLL
+  PURCHASE_ORDER
+  OTHER
+}
+
+enum PayableSourceType {
+  PURCHASE_ORDER
+  SUPPLIER_INVOICE
+  CONTRACT
+  PAYROLL
+  TAX
+  EXPENSE_REIMBURSEMENT
+  LOAN
+  RENT
+  MANUAL_ENTRY
+  OTHER
+}
+
+enum ReceivableSourceType {
+  CONTRACT
+  BILLING_SCHEDULE
+  MEASUREMENT
+  SALES_ORDER
+  SERVICE_INVOICE
+  PRODUCT_INVOICE
+  ADVANCE_REQUEST
+  MANUAL_ENTRY
+  OTHER
+}
+
+enum PayableStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  OPEN
+  PARTIALLY_SETTLED
+  SETTLED
+  CANCELLED
+}
+
+enum PayableApprovalDecision {
+  APPROVED
+  REJECTED
+  INVALIDATED
+}
+
+enum PaymentOrigin {
+  MANUAL
+  RECONCILIATION
+}
+
+enum PayableInstallmentStatus {
+  OPEN
+  PARTIALLY_SETTLED
+  SETTLED
+  CANCELLED
+}
+
+enum ReceivableStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  OPEN
+  PARTIALLY_SETTLED
+  SETTLED
+  CANCELLED
+  WRITTEN_OFF
+}
+
+enum ReceivableInstallmentStatus {
+  OPEN
+  PARTIALLY_SETTLED
+  SETTLED
+  CANCELLED
+  WRITTEN_OFF
+}
+
+enum PaymentMethod {
+  PIX
+  BANK_TRANSFER
+  BOLETO
+  CREDIT_CARD
+  DEBIT_CARD
+  CASH
+  DIRECT_DEBIT
+  CHECK
+  OTHER
+}
+
+enum SettlementStatus {
+  PENDING
+  CONFIRMED
+  RECONCILED
+  REVERSED
+  CANCELLED
+}
+
+enum FinancialPeriodStatus {
+  OPEN
+  CLOSING
+  CLOSED
+  REOPENED
+}
+
+enum BankTransactionDirection {
+  CREDIT
+  DEBIT
+}
+
+enum BankTransactionSource {
+  MANUAL
+  OFX_IMPORT
+  CSV_IMPORT
+  BANK_API
+  OPEN_FINANCE
+  SYSTEM_GENERATED
+}
+
+enum BankStatementSource {
+  OFX_IMPORT
+  CSV_IMPORT
+  BANK_API
+  OPEN_FINANCE
+}
+
+enum BankTransactionStatus {
+  PENDING
+  POSTED
+  REVERSED
+  IGNORED
+}
+
+enum ReconciliationStatus {
+  UNRECONCILED
+  SUGGESTED
+  PARTIALLY_RECONCILED
+  RECONCILED
+  DIVERGENT
+}
+
+enum BankStatementImportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  COMPLETED_WITH_ERRORS
+  FAILED
+  CANCELLED
+}
+
+enum BankReconciliationStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  REOPENED
+  CANCELLED
+}
+
+enum ReconciliationMatchType {
+  AUTOMATIC
+  MANUAL
+  RULE_BASED
+}
+
+enum ReconciliationTargetType {
+  PAYMENT
+  RECEIPT
+  TRANSFER
+  BANK_FEE
+  FINANCIAL_INCOME
+  ADVANCE
+  OTHER
+}
+
+enum ReconciliationMatchStatus {
+  ACTIVE
+  REVERSED
+}
+
+enum FinancialTransferStatus {
+  DRAFT
+  CONFIRMED
+  RECONCILED
+  REVERSED
+  CANCELLED
+}
+
+enum FinancialAllocationSourceType {
+  PAYABLE
+  RECEIVABLE
+}
+
+model PaymentTerm {
+  id          String       @id @default(uuid()) @db.Uuid
+  code        String       @unique @db.VarChar(40)
+  name        String       @db.VarChar(160)
+  description String?      @db.Text
+  status      RecordStatus @default(ACTIVE)
+  createdAt   DateTime     @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt   DateTime     @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  rules     PaymentTermInstallmentRule[]
+  suppliers Supplier[]
+  payables  Payable[]
+
+  @@map("payment_terms")
+}
+
+model PaymentTermInstallmentRule {
+  id             String   @id @default(uuid()) @db.Uuid
+  paymentTermId  String   @db.Uuid @map("payment_term_id")
+  sequence       Int
+  daysAfterBase  Int      @map("days_after_base")
+  percentage     Decimal  @db.Decimal(9, 6)
+  createdAt      DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  paymentTerm PaymentTerm @relation(fields: [paymentTermId], references: [id], onDelete: Cascade)
+
+  @@unique([paymentTermId, sequence])
+  @@index([paymentTermId])
+  @@map("payment_term_installment_rules")
+}
+
+model Supplier {
+  id                   String       @id @default(uuid()) @db.Uuid
+  legalEntityId        String       @db.Uuid @map("legal_entity_id")
+  legalName            String       @db.VarChar(200) @map("legal_name")
+  tradeName            String?      @db.VarChar(200) @map("trade_name")
+  taxDocument          String       @db.VarChar(20) @map("tax_document")
+  contactName          String?      @db.VarChar(160) @map("contact_name")
+  contactEmail         String?      @db.VarChar(200) @map("contact_email")
+  contactPhone         String?      @db.VarChar(40) @map("contact_phone")
+  defaultPaymentTermId String?      @db.Uuid @map("default_payment_term_id")
+  status               RecordStatus @default(ACTIVE)
+  notes                String?      @db.Text
+  createdAt            DateTime     @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt            DateTime     @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  defaultPaymentTerm PaymentTerm?         @relation(fields: [defaultPaymentTermId], references: [id], onDelete: SetNull)
+  bankAccounts       SupplierBankAccount[]
+  pixKeys            SupplierPixKey[]
+
+  @@unique([legalEntityId, taxDocument])
+  @@index([legalEntityId, status])
+  @@index([legalName])
+  @@map("suppliers")
+}
+
+model SupplierBankAccount {
+  id            String       @id @default(uuid()) @db.Uuid
+  supplierId    String       @db.Uuid @map("supplier_id")
+  bankCode      String?      @db.VarChar(20) @map("bank_code")
+  bankName      String       @db.VarChar(160) @map("bank_name")
+  branch        String?      @db.VarChar(30)
+  accountNumber String       @db.VarChar(60) @map("account_number")
+  accountDigit  String?      @db.VarChar(10) @map("account_digit")
+  holderName    String?      @db.VarChar(200) @map("holder_name")
+  holderDocument String?     @db.VarChar(20) @map("holder_document")
+  isDefault     Boolean      @default(false) @map("is_default")
+  status        RecordStatus @default(ACTIVE)
+  createdAt     DateTime     @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt     DateTime     @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@index([supplierId, status])
+  @@map("supplier_bank_accounts")
+}
+
+model SupplierPixKey {
+  id         String       @id @default(uuid()) @db.Uuid
+  supplierId String       @db.Uuid @map("supplier_id")
+  keyType    String       @db.VarChar(30) @map("key_type")
+  keyValue   String       @db.VarChar(255) @map("key_value")
+  isDefault  Boolean      @default(false) @map("is_default")
+  status     RecordStatus @default(ACTIVE)
+  createdAt  DateTime     @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt  DateTime     @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@unique([supplierId, keyValue])
+  @@index([supplierId, status])
+  @@map("supplier_pix_keys")
+}
+
+model PayableApprovalPolicy {
+  id                      String   @id @default(uuid()) @db.Uuid
+  legalEntityId           String   @unique @db.Uuid @map("legal_entity_id")
+  approvalRequiredFrom    Decimal  @default(0) @db.Decimal(19, 4) @map("approval_required_from")
+  updatedBy               String   @db.Uuid @map("updated_by")
+  createdAt               DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt               DateTime @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  @@map("payable_approval_policies")
+}
+
+model PayableDocument {
+  id         String       @id @default(uuid()) @db.Uuid
+  payableId  String       @db.Uuid @map("payable_id")
+  documentId String       @db.Uuid @map("document_id")
+  type       DocumentType?
+  label      String?      @db.VarChar(160)
+  createdAt  DateTime     @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  payable Payable @relation(fields: [payableId], references: [id], onDelete: Cascade)
+
+  @@unique([payableId, documentId])
+  @@index([payableId])
+  @@map("payable_documents")
+}
+
+model FinancialAccount {
+  id                   String                 @id @default(uuid()) @db.Uuid
+  legalEntityId        String                 @db.Uuid @map("legal_entity_id")
+  name                 String                 @db.VarChar(160)
+  type                 FinancialAccountType
+  institutionName      String?                @db.VarChar(160) @map("institution_name")
+  bankCode             String?                @db.VarChar(20) @map("bank_code")
+  branch               String?                @db.VarChar(30)
+  accountNumber        String?                @db.VarChar(60) @map("account_number")
+  accountDigit         String?                @db.VarChar(10) @map("account_digit")
+  currency             Currency               @default(BRL)
+  openingBalance       Decimal                @db.Decimal(19, 4) @map("opening_balance")
+  openingBalanceDate   DateTime               @db.Date @map("opening_balance_date")
+  status               FinancialAccountStatus @default(ACTIVE)
+  allowsReconciliation Boolean                @default(true) @map("allows_reconciliation")
+  createdAt            DateTime               @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt            DateTime               @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  payments             Payment[]
+  receipts             Receipt[]
+  bankTransactions     BankTransaction[]
+  bankStatementImports BankStatementImport[]
+  bankReconciliations  BankReconciliation[]
+  outgoingTransfers    FinancialTransfer[] @relation("TransferSourceAccount")
+  incomingTransfers    FinancialTransfer[] @relation("TransferDestinationAccount")
+
+  @@index([legalEntityId, status])
+  @@index([legalEntityId, type])
+  @@map("financial_accounts")
+}
+
+model DreGroup {
+  id           String       @id @default(uuid()) @db.Uuid
+  code         String       @unique @db.VarChar(40)
+  name         String       @db.VarChar(180)
+  parentId     String?      @db.Uuid @map("parent_id")
+  displayOrder Int          @default(0) @map("display_order")
+  status       RecordStatus @default(ACTIVE)
+  createdAt    DateTime     @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt    DateTime     @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  parent             DreGroup?           @relation("DreGroupHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children           DreGroup[]          @relation("DreGroupHierarchy")
+  managementAccounts ManagementAccount[]
+  allocations        FinancialClassificationAllocation[]
+
+  @@index([parentId])
+  @@index([status, displayOrder])
+  @@map("dre_groups")
+}
+
+model CashFlowGroup {
+  id           String       @id @default(uuid()) @db.Uuid
+  code         String       @unique @db.VarChar(40)
+  name         String       @db.VarChar(180)
+  parentId     String?      @db.Uuid @map("parent_id")
+  displayOrder Int          @default(0) @map("display_order")
+  status       RecordStatus @default(ACTIVE)
+  createdAt    DateTime     @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt    DateTime     @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  parent             CashFlowGroup?     @relation("CashFlowGroupHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children           CashFlowGroup[]    @relation("CashFlowGroupHierarchy")
+  managementAccounts ManagementAccount[]
+  allocations        FinancialClassificationAllocation[]
+
+  @@index([parentId])
+  @@index([status, displayOrder])
+  @@map("cash_flow_groups")
+}
+
+model ManagementAccount {
+  id                    String                  @id @default(uuid()) @db.Uuid
+  code                  String                  @unique @db.VarChar(40)
+  name                  String                  @db.VarChar(180)
+  parentId              String?                 @db.Uuid @map("parent_id")
+  nature                ManagementAccountNature
+  economicNature        EconomicNature          @map("economic_nature")
+  defaultCostBehavior   CostBehavior            @default(NOT_APPLICABLE) @map("default_cost_behavior")
+  defaultCostDirectness CostDirectness           @default(NOT_APPLICABLE) @map("default_cost_directness")
+  dreGroupId            String?                 @db.Uuid @map("dre_group_id")
+  cashFlowGroupId       String?                 @db.Uuid @map("cash_flow_group_id")
+  allowsPosting         Boolean                 @default(true) @map("allows_posting")
+  status                RecordStatus            @default(ACTIVE)
+  validFrom             DateTime?               @db.Date @map("valid_from")
+  validUntil            DateTime?               @db.Date @map("valid_until")
+  createdAt             DateTime                @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt             DateTime                @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  parent         ManagementAccount?  @relation("ManagementAccountHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children       ManagementAccount[] @relation("ManagementAccountHierarchy")
+  dreGroup       DreGroup?           @relation(fields: [dreGroupId], references: [id], onDelete: Restrict)
+  cashFlowGroup  CashFlowGroup?      @relation(fields: [cashFlowGroupId], references: [id], onDelete: Restrict)
+  allocations    FinancialClassificationAllocation[]
+
+  @@index([parentId])
+  @@index([economicNature, status])
+  @@index([dreGroupId])
+  @@index([cashFlowGroupId])
+  @@map("management_accounts")
+}
+
+model CostCenter {
+  id         String       @id @default(uuid()) @db.Uuid
+  code       String       @unique @db.VarChar(40)
+  name       String       @db.VarChar(180)
+  parentId   String?      @db.Uuid @map("parent_id")
+  managerId  String?      @db.Uuid @map("manager_id")
+  status     RecordStatus @default(ACTIVE)
+  validFrom  DateTime?    @db.Date @map("valid_from")
+  validUntil DateTime?    @db.Date @map("valid_until")
+  createdAt  DateTime     @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt  DateTime     @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  parent      CostCenter?  @relation("CostCenterHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children    CostCenter[] @relation("CostCenterHierarchy")
+  allocations FinancialClassificationAllocation[]
+
+  @@index([parentId])
+  @@index([status])
+  @@map("cost_centers")
+}
+
+model BusinessLine {
+  id         String       @id @default(uuid()) @db.Uuid
+  code       String       @unique @db.VarChar(40)
+  name       String       @db.VarChar(180)
+  parentId   String?      @db.Uuid @map("parent_id")
+  status     RecordStatus @default(ACTIVE)
+  validFrom  DateTime?    @db.Date @map("valid_from")
+  validUntil DateTime?    @db.Date @map("valid_until")
+  createdAt  DateTime     @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt  DateTime     @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  parent      BusinessLine?  @relation("BusinessLineHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children    BusinessLine[] @relation("BusinessLineHierarchy")
+  allocations FinancialClassificationAllocation[]
+
+  @@index([parentId])
+  @@index([status])
+  @@map("business_lines")
+}
+
+model FinancialPeriod {
+  id              String                @id @default(uuid()) @db.Uuid
+  legalEntityId   String                @db.Uuid @map("legal_entity_id")
+  year            Int
+  month           Int
+  startDate       DateTime              @db.Date @map("start_date")
+  endDate         DateTime              @db.Date @map("end_date")
+  status          FinancialPeriodStatus @default(OPEN)
+  closedBy        String?               @db.Uuid @map("closed_by")
+  closedAt        DateTime?             @db.Timestamptz(6) @map("closed_at")
+  reopenedBy      String?               @db.Uuid @map("reopened_by")
+  reopenedAt      DateTime?             @db.Timestamptz(6) @map("reopened_at")
+  reopeningReason String?               @db.Text @map("reopening_reason")
+  createdAt       DateTime              @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt       DateTime              @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  @@unique([legalEntityId, year, month])
+  @@index([legalEntityId, status])
+  @@map("financial_periods")
+}
+
+model Payable {
+  id              String            @id @default(uuid()) @db.Uuid
+  legalEntityId   String            @db.Uuid @map("legal_entity_id")
+  counterpartyId  String            @db.Uuid @map("counterparty_id")
+  counterpartyType CounterpartyType  @map("counterparty_type")
+  description     String            @db.Text
+  documentNumber  String?           @db.VarChar(100) @map("document_number")
+  documentType    DocumentType?     @map("document_type")
+  issueDate       DateTime?         @db.Date @map("issue_date")
+  competenceDate  DateTime          @db.Date @map("competence_date")
+  originalAmount  Decimal           @db.Decimal(19, 4) @map("original_amount")
+  currency        Currency          @default(BRL)
+  status          PayableStatus     @default(DRAFT)
+  sourceType      PayableSourceType @map("source_type")
+  sourceId        String?           @db.Uuid @map("source_id")
+  contractId      String?           @db.Uuid @map("contract_id")
+  purchaseOrderId String?           @db.Uuid @map("purchase_order_id")
+  paymentTermId   String?           @db.Uuid @map("payment_term_id")
+  createdBy       String            @db.Uuid @map("created_by")
+  createdAt       DateTime          @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt       DateTime          @updatedAt @db.Timestamptz(6) @map("updated_at")
+  version         Int               @default(1)
+
+  installments PayableInstallment[]
+  allocations  FinancialClassificationAllocation[]
+  documents    PayableDocument[]
+  approvals     PayableApproval[]
+  paymentTerm  PaymentTerm? @relation(fields: [paymentTermId], references: [id], onDelete: SetNull)
+
+  @@index([legalEntityId, status])
+  @@index([counterpartyId, status])
+  @@index([competenceDate])
+  @@index([documentNumber])
+  @@index([contractId])
+  @@index([purchaseOrderId])
+  @@map("payables")
+}
+
+model PayableApproval {
+  id             String                  @id @default(uuid()) @db.Uuid
+  payableId      String                  @db.Uuid @map("payable_id")
+  payableVersion Int                     @map("payable_version")
+  decision       PayableApprovalDecision
+  actorId        String                  @db.Uuid @map("actor_id")
+  reason         String?                 @db.Text
+  createdAt      DateTime                @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  payable Payable @relation(fields: [payableId], references: [id], onDelete: Restrict)
+
+  @@index([payableId, payableVersion, createdAt])
+  @@index([actorId, createdAt])
+  @@map("payable_approvals")
+}
+
+model PayableInstallment {
+  id                  String                   @id @default(uuid()) @db.Uuid
+  payableId           String                   @db.Uuid @map("payable_id")
+  sequence            Int
+  dueDate             DateTime                 @db.Date @map("due_date")
+  originalDueDate     DateTime                 @db.Date @map("original_due_date")
+  expectedPaymentDate DateTime?                @db.Date @map("expected_payment_date")
+  originalAmount      Decimal                  @db.Decimal(19, 4) @map("original_amount")
+  openAmount          Decimal                  @db.Decimal(19, 4) @map("open_amount")
+  status              PayableInstallmentStatus @default(OPEN)
+  paymentMethod       PaymentMethod?           @map("payment_method")
+  barcode             String?                  @db.VarChar(255)
+  pixKey              String?                  @db.VarChar(255) @map("pix_key")
+  notes               String?                  @db.Text
+  createdAt           DateTime                 @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt           DateTime                 @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  payable            Payable             @relation(fields: [payableId], references: [id], onDelete: Restrict)
+  paymentAllocations PaymentAllocation[]
+
+  @@unique([payableId, sequence])
+  @@index([dueDate, status])
+  @@map("payable_installments")
+}
+
+model Payment {
+  id                 String           @id @default(uuid()) @db.Uuid
+  legalEntityId      String           @db.Uuid @map("legal_entity_id")
+  paymentDate        DateTime         @db.Date @map("payment_date")
+  amount             Decimal          @db.Decimal(19, 4)
+  currency           Currency         @default(BRL)
+  financialAccountId String           @db.Uuid @map("financial_account_id")
+  paymentMethod      PaymentMethod    @map("payment_method")
+  origin             PaymentOrigin    @default(MANUAL)
+  reference          String?          @db.VarChar(255)
+  status             SettlementStatus @default(PENDING)
+  reversesPaymentId  String?          @unique @db.Uuid @map("reverses_payment_id")
+  reversalReason     String?          @db.Text @map("reversal_reason")
+  createdBy          String           @db.Uuid @map("created_by")
+  createdAt          DateTime         @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  financialAccount      FinancialAccount      @relation(fields: [financialAccountId], references: [id], onDelete: Restrict)
+  reversesPayment       Payment?              @relation("PaymentReversal", fields: [reversesPaymentId], references: [id], onDelete: Restrict)
+  reversedBy            Payment?              @relation("PaymentReversal")
+  allocations           PaymentAllocation[]
+  reconciliationMatches ReconciliationMatch[]
+
+  @@index([legalEntityId, paymentDate])
+  @@index([financialAccountId, paymentDate])
+  @@index([status])
+  @@map("payments")
+}
+
+model PaymentAllocation {
+  id                   String   @id @default(uuid()) @db.Uuid
+  paymentId            String   @db.Uuid @map("payment_id")
+  payableInstallmentId String   @db.Uuid @map("payable_installment_id")
+  principalAmount      Decimal  @default(0) @db.Decimal(19, 4) @map("principal_amount")
+  interestAmount       Decimal  @default(0) @db.Decimal(19, 4) @map("interest_amount")
+  penaltyAmount        Decimal  @default(0) @db.Decimal(19, 4) @map("penalty_amount")
+  discountAmount       Decimal  @default(0) @db.Decimal(19, 4) @map("discount_amount")
+  withholdingAmount    Decimal  @default(0) @db.Decimal(19, 4) @map("withholding_amount")
+  allocatedAmount      Decimal  @db.Decimal(19, 4) @map("allocated_amount")
+  createdAt            DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  payment            Payment            @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  payableInstallment PayableInstallment @relation(fields: [payableInstallmentId], references: [id], onDelete: Restrict)
+
+  @@unique([paymentId, payableInstallmentId])
+  @@index([payableInstallmentId])
+  @@map("payment_allocations")
+}
+
+model Receivable {
+  id                    String               @id @default(uuid()) @db.Uuid
+  legalEntityId         String               @db.Uuid @map("legal_entity_id")
+  customerId            String               @db.Uuid @map("customer_id")
+  description           String               @db.Text
+  documentNumber        String?              @db.VarChar(100) @map("document_number")
+  documentType          DocumentType?        @map("document_type")
+  issueDate             DateTime?            @db.Date @map("issue_date")
+  competenceDate        DateTime             @db.Date @map("competence_date")
+  originalAmount        Decimal              @db.Decimal(19, 4) @map("original_amount")
+  currency              Currency             @default(BRL)
+  status                ReceivableStatus     @default(DRAFT)
+  sourceType            ReceivableSourceType @map("source_type")
+  sourceId              String?              @db.Uuid @map("source_id")
+  contractId            String?              @db.Uuid @map("contract_id")
+  billingScheduleItemId String?              @db.Uuid @map("billing_schedule_item_id")
+  measurementId         String?              @db.Uuid @map("measurement_id")
+  createdBy             String               @db.Uuid @map("created_by")
+  createdAt             DateTime             @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt             DateTime             @updatedAt @db.Timestamptz(6) @map("updated_at")
+  version               Int                  @default(1)
+
+  installments ReceivableInstallment[]
+  allocations  FinancialClassificationAllocation[]
+
+  @@index([legalEntityId, status])
+  @@index([customerId, status])
+  @@index([competenceDate])
+  @@index([documentNumber])
+  @@index([contractId])
+  @@index([billingScheduleItemId])
+  @@index([measurementId])
+  @@map("receivables")
+}
+
+model ReceivableInstallment {
+  id                  String                      @id @default(uuid()) @db.Uuid
+  receivableId        String                      @db.Uuid @map("receivable_id")
+  sequence            Int
+  dueDate             DateTime                    @db.Date @map("due_date")
+  originalDueDate     DateTime                    @db.Date @map("original_due_date")
+  expectedReceiptDate DateTime?                   @db.Date @map("expected_receipt_date")
+  originalAmount      Decimal                     @db.Decimal(19, 4) @map("original_amount")
+  openAmount          Decimal                     @db.Decimal(19, 4) @map("open_amount")
+  status              ReceivableInstallmentStatus @default(OPEN)
+  billingReference    String?                     @db.VarChar(255) @map("billing_reference")
+  collectionStatus    String?                     @db.VarChar(80) @map("collection_status")
+  notes               String?                     @db.Text
+  createdAt           DateTime                    @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt           DateTime                    @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  receivable         Receivable          @relation(fields: [receivableId], references: [id], onDelete: Restrict)
+  receiptAllocations ReceiptAllocation[]
+
+  @@unique([receivableId, sequence])
+  @@index([dueDate, status])
+  @@map("receivable_installments")
+}
+
+model Receipt {
+  id                 String           @id @default(uuid()) @db.Uuid
+  legalEntityId      String           @db.Uuid @map("legal_entity_id")
+  receiptDate        DateTime         @db.Date @map("receipt_date")
+  amount             Decimal          @db.Decimal(19, 4)
+  currency           Currency         @default(BRL)
+  financialAccountId String           @db.Uuid @map("financial_account_id")
+  receiptMethod      PaymentMethod    @map("receipt_method")
+  reference          String?          @db.VarChar(255)
+  status             SettlementStatus @default(PENDING)
+  reversesReceiptId  String?          @unique @db.Uuid @map("reverses_receipt_id")
+  createdBy          String           @db.Uuid @map("created_by")
+  createdAt          DateTime         @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  financialAccount      FinancialAccount      @relation(fields: [financialAccountId], references: [id], onDelete: Restrict)
+  reversesReceipt       Receipt?              @relation("ReceiptReversal", fields: [reversesReceiptId], references: [id], onDelete: Restrict)
+  reversedBy            Receipt?              @relation("ReceiptReversal")
+  allocations           ReceiptAllocation[]
+  reconciliationMatches ReconciliationMatch[]
+
+  @@index([legalEntityId, receiptDate])
+  @@index([financialAccountId, receiptDate])
+  @@index([status])
+  @@map("receipts")
+}
+
+model ReceiptAllocation {
+  id                      String   @id @default(uuid()) @db.Uuid
+  receiptId               String   @db.Uuid @map("receipt_id")
+  receivableInstallmentId String   @db.Uuid @map("receivable_installment_id")
+  principalAmount         Decimal  @default(0) @db.Decimal(19, 4) @map("principal_amount")
+  interestAmount          Decimal  @default(0) @db.Decimal(19, 4) @map("interest_amount")
+  penaltyAmount           Decimal  @default(0) @db.Decimal(19, 4) @map("penalty_amount")
+  discountAmount          Decimal  @default(0) @db.Decimal(19, 4) @map("discount_amount")
+  withholdingAmount       Decimal  @default(0) @db.Decimal(19, 4) @map("withholding_amount")
+  allocatedAmount         Decimal  @db.Decimal(19, 4) @map("allocated_amount")
+  createdAt               DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  receipt               Receipt               @relation(fields: [receiptId], references: [id], onDelete: Restrict)
+  receivableInstallment ReceivableInstallment @relation(fields: [receivableInstallmentId], references: [id], onDelete: Restrict)
+
+  @@unique([receiptId, receivableInstallmentId])
+  @@index([receivableInstallmentId])
+  @@map("receipt_allocations")
+}
+
+model FinancialClassificationAllocation {
+  id                  String                        @id @default(uuid()) @db.Uuid
+  sourceType          FinancialAllocationSourceType @map("source_type")
+  payableId           String?                       @db.Uuid @map("payable_id")
+  receivableId        String?                       @db.Uuid @map("receivable_id")
+  managementAccountId String                        @db.Uuid @map("management_account_id")
+  economicNature      EconomicNature                @map("economic_nature")
+  dreGroupId          String?                       @db.Uuid @map("dre_group_id")
+  cashFlowGroupId     String?                       @db.Uuid @map("cash_flow_group_id")
+  costCenterId        String?                       @db.Uuid @map("cost_center_id")
+  businessLineId      String?                       @db.Uuid @map("business_line_id")
+  projectId           String?                       @db.Uuid @map("project_id")
+  contractId          String?                       @db.Uuid @map("contract_id")
+  amount              Decimal                       @db.Decimal(19, 4)
+  percentage          Decimal?                      @db.Decimal(9, 6)
+  competenceDate      DateTime                      @db.Date @map("competence_date")
+  costBehavior        CostBehavior                  @map("cost_behavior")
+  costDirectness      CostDirectness                @map("cost_directness")
+  notes               String?                       @db.Text
+  createdBy           String                        @db.Uuid @map("created_by")
+  createdAt           DateTime                      @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt           DateTime                      @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  payable           Payable?          @relation(fields: [payableId], references: [id], onDelete: Restrict)
+  receivable        Receivable?       @relation(fields: [receivableId], references: [id], onDelete: Restrict)
+  managementAccount ManagementAccount @relation(fields: [managementAccountId], references: [id], onDelete: Restrict)
+  dreGroup          DreGroup?         @relation(fields: [dreGroupId], references: [id], onDelete: Restrict)
+  cashFlowGroup     CashFlowGroup?    @relation(fields: [cashFlowGroupId], references: [id], onDelete: Restrict)
+  costCenter        CostCenter?       @relation(fields: [costCenterId], references: [id], onDelete: Restrict)
+  businessLine      BusinessLine?     @relation(fields: [businessLineId], references: [id], onDelete: Restrict)
+
+  @@index([payableId])
+  @@index([receivableId])
+  @@index([managementAccountId])
+  @@index([economicNature])
+  @@index([dreGroupId])
+  @@index([cashFlowGroupId])
+  @@index([costCenterId])
+  @@index([businessLineId])
+  @@index([projectId])
+  @@index([contractId])
+  @@index([competenceDate])
+  @@map("financial_classification_allocations")
+}
+
+model BankStatementImport {
+  id                 String                    @id @default(uuid()) @db.Uuid
+  financialAccountId String                    @db.Uuid @map("financial_account_id")
+  source             BankStatementSource
+  documentId         String?                   @db.Uuid @map("document_id")
+  fileName           String                    @db.VarChar(255) @map("file_name")
+  fileHash           String                    @db.VarChar(128) @map("file_hash")
+  periodStart        DateTime                  @db.Date @map("period_start")
+  periodEnd          DateTime                  @db.Date @map("period_end")
+  status             BankStatementImportStatus @default(PENDING)
+  totalRecords       Int                       @default(0) @map("total_records")
+  importedRecords    Int                       @default(0) @map("imported_records")
+  duplicateRecords   Int                       @default(0) @map("duplicate_records")
+  rejectedRecords    Int                       @default(0) @map("rejected_records")
+  createdBy          String                    @db.Uuid @map("created_by")
+  createdAt          DateTime                  @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  financialAccount FinancialAccount @relation(fields: [financialAccountId], references: [id], onDelete: Restrict)
+  transactions     BankTransaction[]
+
+  @@unique([financialAccountId, fileHash])
+  @@index([financialAccountId, periodStart, periodEnd])
+  @@map("bank_statement_imports")
+}
+
+model BankTransaction {
+  id                   String                    @id @default(uuid()) @db.Uuid
+  financialAccountId   String                    @db.Uuid @map("financial_account_id")
+  importBatchId        String?                   @db.Uuid @map("import_batch_id")
+  externalId           String?                   @db.VarChar(255) @map("external_id")
+  transactionDate      DateTime                  @db.Date @map("transaction_date")
+  postingDate          DateTime?                 @db.Date @map("posting_date")
+  amount               Decimal                   @db.Decimal(19, 4)
+  direction            BankTransactionDirection
+  currency             Currency                  @default(BRL)
+  description          String?                   @db.Text
+  documentNumber       String?                   @db.VarChar(100) @map("document_number")
+  counterpartyName     String?                   @db.VarChar(255) @map("counterparty_name")
+  counterpartyDocument String?                   @db.VarChar(40) @map("counterparty_document")
+  bankReference        String?                   @db.VarChar(255) @map("bank_reference")
+  source               BankTransactionSource
+  status               BankTransactionStatus     @default(POSTED)
+  reconciliationStatus ReconciliationStatus      @default(UNRECONCILED) @map("reconciliation_status")
+  createdAt            DateTime                  @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  financialAccount          FinancialAccount     @relation(fields: [financialAccountId], references: [id], onDelete: Restrict)
+  importBatch               BankStatementImport? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+  reconciliationMatches     ReconciliationMatch[]
+  outgoingTransferReference FinancialTransfer?   @relation("OutgoingBankTransaction")
+  incomingTransferReference FinancialTransfer?   @relation("IncomingBankTransaction")
+
+  @@unique([financialAccountId, externalId])
+  @@index([financialAccountId, transactionDate])
+  @@index([financialAccountId, reconciliationStatus])
+  @@index([importBatchId])
+  @@map("bank_transactions")
+}
+
+model BankReconciliation {
+  id                   String                   @id @default(uuid()) @db.Uuid
+  financialAccountId   String                   @db.Uuid @map("financial_account_id")
+  statementPeriodStart DateTime                 @db.Date @map("statement_period_start")
+  statementPeriodEnd   DateTime                 @db.Date @map("statement_period_end")
+  status               BankReconciliationStatus @default(OPEN)
+  startedBy            String                   @db.Uuid @map("started_by")
+  completedBy          String?                  @db.Uuid @map("completed_by")
+  startedAt            DateTime                 @default(now()) @db.Timestamptz(6) @map("started_at")
+  completedAt          DateTime?                @db.Timestamptz(6) @map("completed_at")
+  createdAt            DateTime                 @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt            DateTime                 @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  financialAccount FinancialAccount      @relation(fields: [financialAccountId], references: [id], onDelete: Restrict)
+  matches          ReconciliationMatch[]
+
+  @@index([financialAccountId, statementPeriodStart, statementPeriodEnd])
+  @@index([status])
+  @@map("bank_reconciliations")
+}
+
+model ReconciliationMatch {
+  id                String                    @id @default(uuid()) @db.Uuid
+  reconciliationId  String                    @db.Uuid @map("reconciliation_id")
+  bankTransactionId String                    @db.Uuid @map("bank_transaction_id")
+  targetType        ReconciliationTargetType  @map("target_type")
+  paymentId         String?                   @db.Uuid @map("payment_id")
+  receiptId         String?                   @db.Uuid @map("receipt_id")
+  transferId        String?                   @db.Uuid @map("transfer_id")
+  externalTargetId  String?                   @db.Uuid @map("external_target_id")
+  matchedAmount     Decimal                   @db.Decimal(19, 4) @map("matched_amount")
+  matchType         ReconciliationMatchType   @map("match_type")
+  confidenceScore   Decimal?                  @db.Decimal(5, 2) @map("confidence_score")
+  criteria          Json?
+  status            ReconciliationMatchStatus @default(ACTIVE)
+  matchedBy         String                    @db.Uuid @map("matched_by")
+  matchedAt         DateTime                  @default(now()) @db.Timestamptz(6) @map("matched_at")
+  reversedBy        String?                   @db.Uuid @map("reversed_by")
+  reversedAt        DateTime?                 @db.Timestamptz(6) @map("reversed_at")
+  reversalReason    String?                   @db.Text @map("reversal_reason")
+
+  reconciliation  BankReconciliation @relation(fields: [reconciliationId], references: [id], onDelete: Restrict)
+  bankTransaction BankTransaction    @relation(fields: [bankTransactionId], references: [id], onDelete: Restrict)
+  payment         Payment?           @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  receipt         Receipt?           @relation(fields: [receiptId], references: [id], onDelete: Restrict)
+  transfer        FinancialTransfer? @relation(fields: [transferId], references: [id], onDelete: Restrict)
+
+  @@index([reconciliationId])
+  @@index([bankTransactionId, status])
+  @@index([paymentId])
+  @@index([receiptId])
+  @@index([transferId])
+  @@map("reconciliation_matches")
+}
+
+model FinancialTransfer {
+  id                        String                  @id @default(uuid()) @db.Uuid
+  sourceAccountId           String                  @db.Uuid @map("source_account_id")
+  destinationAccountId      String                  @db.Uuid @map("destination_account_id")
+  transferDate              DateTime                @db.Date @map("transfer_date")
+  amount                    Decimal                 @db.Decimal(19, 4)
+  currency                  Currency                @default(BRL)
+  feeAmount                 Decimal                 @default(0) @db.Decimal(19, 4) @map("fee_amount")
+  status                    FinancialTransferStatus @default(DRAFT)
+  outgoingBankTransactionId String?                 @unique @db.Uuid @map("outgoing_bank_transaction_id")
+  incomingBankTransactionId String?                 @unique @db.Uuid @map("incoming_bank_transaction_id")
+  reference                 String?                 @db.VarChar(255)
+  createdBy                 String                  @db.Uuid @map("created_by")
+  createdAt                 DateTime                @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt                 DateTime                @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  sourceAccount           FinancialAccount      @relation("TransferSourceAccount", fields: [sourceAccountId], references: [id], onDelete: Restrict)
+  destinationAccount      FinancialAccount      @relation("TransferDestinationAccount", fields: [destinationAccountId], references: [id], onDelete: Restrict)
+  outgoingBankTransaction BankTransaction?      @relation("OutgoingBankTransaction", fields: [outgoingBankTransactionId], references: [id], onDelete: SetNull)
+  incomingBankTransaction BankTransaction?      @relation("IncomingBankTransaction", fields: [incomingBankTransactionId], references: [id], onDelete: SetNull)
+  reconciliationMatches   ReconciliationMatch[]
+
+  @@index([sourceAccountId, transferDate])
+  @@index([destinationAccountId, transferDate])
+  @@index([status])
+  @@map("financial_transfers")
+}

@@ -1,0 +1,67 @@
+name: Project Catalog Patch V2
+
+on:
+  push:
+    branches:
+      - agent/bootstrap-platform
+    paths:
+      - '.github/workflows/project-catalog-patch-v2.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/bootstrap-platform
+      - name: Implement projects and catalog selectors
+        shell: python
+        run: |
+          from pathlib import Path
+
+          schema = Path('packages/database/prisma/schema.prisma')
+          s = schema.read_text()
+          s = s.replace('''  parent      BusinessLine?  @relation("BusinessLineHierarchy", fields: [parentId], references: [id], onDelete: Restrict)\n  children    BusinessLine[] @relation("BusinessLineHierarchy")\n  allocations FinancialClassificationAllocation[]\n''','''  parent      BusinessLine?  @relation("BusinessLineHierarchy", fields: [parentId], references: [id], onDelete: Restrict)\n  children    BusinessLine[] @relation("BusinessLineHierarchy")\n  allocations FinancialClassificationAllocation[]\n  projects    Project[]\n''',1)
+          project_model='''model Project {\n  id             String       @id @default(uuid()) @db.Uuid\n  legalEntityId  String       @db.Uuid @map("legal_entity_id")\n  code           String       @db.VarChar(60)\n  name           String       @db.VarChar(200)\n  description    String?      @db.Text\n  businessLineId String?      @db.Uuid @map("business_line_id")\n  status         RecordStatus @default(ACTIVE)\n  startDate      DateTime?    @db.Date @map("start_date")\n  endDate        DateTime?    @db.Date @map("end_date")\n  createdAt      DateTime     @default(now()) @db.Timestamptz(6) @map("created_at")\n  updatedAt      DateTime     @updatedAt @db.Timestamptz(6) @map("updated_at")\n\n  businessLine BusinessLine? @relation(fields: [businessLineId], references: [id], onDelete: SetNull)\n  allocations  FinancialClassificationAllocation[]\n\n  @@unique([legalEntityId, code])\n  @@index([legalEntityId, status])\n  @@index([businessLineId])\n  @@map("projects")\n}\n\n'''
+          if 'model Project {' not in s:
+              s=s.replace('model FinancialPeriod {\n',project_model+'model FinancialPeriod {\n',1)
+          if 'project           Project?' not in s:
+              s=s.replace('''  businessLine      BusinessLine?     @relation(fields: [businessLineId], references: [id], onDelete: Restrict)\n''','''  businessLine      BusinessLine?     @relation(fields: [businessLineId], references: [id], onDelete: Restrict)\n  project           Project?          @relation(fields: [projectId], references: [id], onDelete: Restrict)\n''',1)
+          schema.write_text(s)
+
+          mig=Path('packages/database/prisma/migrations/20260822152500_projects')
+          mig.mkdir(parents=True,exist_ok=True)
+          (mig/'migration.sql').write_text('''CREATE TABLE "projects" (\n    "id" UUID NOT NULL,\n    "legal_entity_id" UUID NOT NULL,\n    "code" VARCHAR(60) NOT NULL,\n    "name" VARCHAR(200) NOT NULL,\n    "description" TEXT,\n    "business_line_id" UUID,\n    "status" "RecordStatus" NOT NULL DEFAULT 'ACTIVE',\n    "start_date" DATE,\n    "end_date" DATE,\n    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,\n    "updated_at" TIMESTAMPTZ(6) NOT NULL,\n    CONSTRAINT "projects_pkey" PRIMARY KEY ("id")\n);\nCREATE UNIQUE INDEX "projects_legal_entity_id_code_key" ON "projects"("legal_entity_id", "code");\nCREATE INDEX "projects_legal_entity_id_status_idx" ON "projects"("legal_entity_id", "status");\nCREATE INDEX "projects_business_line_id_idx" ON "projects"("business_line_id");\nALTER TABLE "projects" ADD CONSTRAINT "projects_business_line_id_fkey" FOREIGN KEY ("business_line_id") REFERENCES "business_lines"("id") ON DELETE SET NULL ON UPDATE CASCADE;\nALTER TABLE "financial_classification_allocations" ADD CONSTRAINT "financial_classification_allocations_project_id_fkey" FOREIGN KEY ("project_id") REFERENCES "projects"("id") ON DELETE RESTRICT ON UPDATE CASCADE;\n''')
+
+          Path('apps/api/src/modules/financial/presentation/dto/create-project.dto.ts').write_text('''import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';\nimport { IsDateString, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';\nexport class CreateProjectDto {\n  @ApiProperty({ format: 'uuid' }) @IsUUID() legalEntityId!: string;\n  @ApiProperty() @IsString() @MaxLength(60) code!: string;\n  @ApiProperty() @IsString() @MaxLength(200) name!: string;\n  @ApiPropertyOptional() @IsOptional() @IsString() description?: string;\n  @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUUID() businessLineId?: string;\n  @ApiPropertyOptional() @IsOptional() @IsDateString() startDate?: string;\n  @ApiPropertyOptional() @IsOptional() @IsDateString() endDate?: string;\n}\n''')
+          Path('apps/api/src/modules/financial/application/projects.service.ts').write_text('''import { Injectable } from '@nestjs/common';\nimport { prisma } from '@aritech/database';\nimport { CreateProjectDto } from '../presentation/dto/create-project.dto';\n@Injectable()\nexport class ProjectsService {\n  list(legalEntityId: string) { return prisma.project.findMany({ where:{ legalEntityId,status:'ACTIVE' }, include:{ businessLine:true }, orderBy:[{code:'asc'},{name:'asc'}] }); }\n  create(input: CreateProjectDto) { return prisma.project.create({ data:{ legalEntityId:input.legalEntityId,code:input.code,name:input.name,description:input.description,businessLineId:input.businessLineId,startDate:input.startDate?new Date(input.startDate):undefined,endDate:input.endDate?new Date(input.endDate):undefined }, include:{businessLine:true} }); }\n}\n''')
+          Path('apps/api/src/modules/financial/presentation/projects.controller.ts').write_text('''import { Body, Controller, Get, Post, Query } from '@nestjs/common';\nimport { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';\nimport { ProjectsService } from '../application/projects.service';\nimport { CreateProjectDto } from './dto/create-project.dto';\n@ApiTags('projects')\n@Controller('financial/projects')\nexport class ProjectsController {\n  constructor(private readonly service: ProjectsService) {}\n  @Get() @ApiOperation({summary:'Lista projetos ativos da entidade legal'}) @ApiQuery({name:'legalEntityId',format:'uuid'}) list(@Query('legalEntityId') id:string){return this.service.list(id)}\n  @Post() @ApiOperation({summary:'Cria um projeto'}) create(@Body() input:CreateProjectDto){return this.service.create(input)}\n}\n''')
+
+          catalogs=Path('apps/api/src/modules/financial/application/financial-catalogs.service.ts')
+          c=catalogs.read_text().replace("prisma.costCenter.findMany({ where: { legalEntityId, status: 'ACTIVE' }, orderBy: { name: 'asc' } })","prisma.costCenter.findMany({ where: { status: 'ACTIVE' }, orderBy: { name: 'asc' } })")
+          catalogs.write_text(c)
+
+          Path('apps/api/src/modules/financial/financial.module.ts').write_text('''import { Module } from '@nestjs/common';\nimport { FinancialAccountsController } from './presentation/financial-accounts.controller';\nimport { FinancialAccountsService } from './application/financial-accounts.service';\nimport { FinancialCatalogsController } from './presentation/financial-catalogs.controller';\nimport { FinancialCatalogsService } from './application/financial-catalogs.service';\nimport { ProjectsController } from './presentation/projects.controller';\nimport { ProjectsService } from './application/projects.service';\nimport { SuppliersController } from './presentation/suppliers.controller';\nimport { SuppliersService } from './application/suppliers.service';\nimport { PaymentTermsController } from './presentation/payment-terms.controller';\nimport { PaymentTermsService } from './application/payment-terms.service';\nimport { PayablesController } from './presentation/payables.controller';\nimport { PayablesService } from './application/payables.service';\nimport { PayableApprovalPolicyController } from './presentation/payable-approval-policy.controller';\nimport { PayableApprovalPolicyService } from './application/payable-approval-policy.service';\nimport { PayableApprovalsController } from './presentation/payable-approvals.controller';\nimport { PayableApprovalsService } from './application/payable-approvals.service';\nimport { PaymentsController } from './presentation/payments.controller';\nimport { PaymentsService } from './application/payments.service';\nimport { BankReconciliationController } from './presentation/bank-reconciliation.controller';\nimport { BankReconciliationService } from './application/bank-reconciliation.service';\n@Module({\n controllers:[FinancialAccountsController,FinancialCatalogsController,ProjectsController,SuppliersController,PaymentTermsController,PayablesController,PayableApprovalPolicyController,PayableApprovalsController,PaymentsController,BankReconciliationController],\n providers:[FinancialAccountsService,FinancialCatalogsService,ProjectsService,SuppliersService,PaymentTermsService,PayablesService,PayableApprovalPolicyService,PayableApprovalsService,PaymentsService,BankReconciliationService],\n})\nexport class FinancialModule {}\n''')
+
+          page=Path('apps/web/app/page.tsx')
+          p=page.read_text()
+          target='<Header title="Contas a pagar" subtitle="Registre competência, vencimento, parcelamento e rateio gerencial desde a origem."/>'
+          if target in p:
+              p=p.replace(target,'<Header title="Contas a pagar" subtitle="Registre competência, vencimento, parcelamento e rateio gerencial desde a origem." actions={<a className="btn primary" href="/payables/new">Nova conta com seletores</a>}/>',1)
+          page.write_text(p)
+      - name: Validate Prisma
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+          pnpm --filter @aritech/database validate
+          pnpm --filter @aritech/database generate
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages/database/prisma apps/api/src/modules/financial apps/web/app/page.tsx
+          git commit -m "feat(financial): implement projects and catalog selectors"
+          git push origin HEAD:agent/bootstrap-platform
