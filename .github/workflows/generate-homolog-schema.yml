@@ -1,0 +1,53 @@
+name: Generate Homolog Schema
+
+on:
+  push:
+    branches:
+      - agent/bootstrap-platform
+    paths:
+      - '.trigger-homolog-schema'
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/bootstrap-platform
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Generate schema SQL
+        run: |
+          mkdir -p tmp/homolog-schema
+          pnpm --filter @aritech/database exec prisma migrate diff --from-empty --to-schema prisma/schema.prisma --script > tmp/homolog-schema/full.sql
+          python - <<'PY'
+          from pathlib import Path
+          src=Path('tmp/homolog-schema/full.sql').read_text()
+          statements=[s.strip()+';\n' for s in src.split(';') if s.strip()]
+          parts=[]; buf=''
+          for st in statements:
+              if buf and len(buf)+len(st)>12000:
+                  parts.append(buf); buf=''
+              buf+=st+'\n'
+          if buf: parts.append(buf)
+          for i,p in enumerate(parts,1):
+              Path(f'tmp/homolog-schema/part-{i:02d}.sql').write_text(p)
+          Path('tmp/homolog-schema/full.sql').unlink()
+          print(f'generated {len(parts)} parts')
+          PY
+      - name: Commit generated SQL
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tmp/homolog-schema
+          git commit -m "chore(db): generate homolog bootstrap schema" || exit 0
+          git push origin HEAD:agent/bootstrap-platform
