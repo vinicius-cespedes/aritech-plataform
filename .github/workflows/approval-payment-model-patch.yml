@@ -1,0 +1,104 @@
+name: Approval Payment Model Patch
+
+on:
+  push:
+    branches:
+      - 'agent/**'
+    paths:
+      - '.github/workflows/approval-payment-model-patch.yml'
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: aritech
+          POSTGRES_PASSWORD: aritech
+          POSTGRES_DB: aritech
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aritech -d aritech"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://aritech:aritech@localhost:5432/aritech?schema=public
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/bootstrap-platform
+
+      - name: Patch Prisma schema
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('packages/database/prisma/schema.prisma')
+          s = p.read_text()
+
+          if 'enum PayableApprovalDecision {' not in s:
+              s = s.replace(
+                  'enum PayableInstallmentStatus {',
+                  '''enum PayableApprovalDecision {\n  APPROVED\n  REJECTED\n  INVALIDATED\n}\n\nenum PaymentOrigin {\n  MANUAL\n  RECONCILIATION\n}\n\nenum PayableInstallmentStatus {'''
+              )
+
+          if 'model PayableApproval {' not in s:
+              s = s.replace(
+                  'model PayableInstallment {',
+                  '''model PayableApproval {\n  id             String                  @id @default(uuid()) @db.Uuid\n  payableId      String                  @db.Uuid @map("payable_id")\n  payableVersion Int                     @map("payable_version")\n  decision       PayableApprovalDecision\n  actorId        String                  @db.Uuid @map("actor_id")\n  reason         String?                 @db.Text\n  createdAt      DateTime                @default(now()) @db.Timestamptz(6) @map("created_at")\n\n  payable Payable @relation(fields: [payableId], references: [id], onDelete: Restrict)\n\n  @@index([payableId, payableVersion, createdAt])\n  @@index([actorId, createdAt])\n  @@map("payable_approvals")\n}\n\nmodel PayableInstallment {'''
+              )
+
+          if 'approvals     PayableApproval[]' not in s:
+              s = s.replace(
+                  '  documents    PayableDocument[]\n  paymentTerm  PaymentTerm?',
+                  '  documents    PayableDocument[]\n  approvals     PayableApproval[]\n  paymentTerm  PaymentTerm?'
+              )
+
+          if 'origin             PaymentOrigin' not in s:
+              s = s.replace(
+                  '  paymentMethod      PaymentMethod    @map("payment_method")\n  reference',
+                  '  paymentMethod      PaymentMethod    @map("payment_method")\n  origin             PaymentOrigin    @default(MANUAL)\n  reference'
+              )
+
+          if 'reversalReason     String?' not in s:
+              s = s.replace(
+                  '  reversesPaymentId  String?          @unique @db.Uuid @map("reverses_payment_id")\n  createdBy',
+                  '  reversesPaymentId  String?          @unique @db.Uuid @map("reverses_payment_id")\n  reversalReason     String?          @db.Text @map("reversal_reason")\n  createdBy'
+              )
+
+          p.write_text(s)
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Apply existing migrations
+        run: pnpm --filter @aritech/database exec prisma migrate deploy
+
+      - name: Validate schema
+        run: pnpm db:validate
+
+      - name: Generate migration
+        run: pnpm --filter @aritech/database exec prisma migrate dev --name approvals_and_payments --create-only
+
+      - name: Commit schema and migration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages/database/prisma/schema.prisma packages/database/prisma/migrations
+          git commit -m "feat(database): add approvals and payment metadata"
+          git push origin HEAD:agent/bootstrap-platform
