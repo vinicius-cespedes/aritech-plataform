@@ -127,6 +127,17 @@ enum PayableStatus {
   CANCELLED
 }
 
+enum PayableApprovalDecision {
+  APPROVED
+  REJECTED
+  INVALIDATED
+}
+
+enum PaymentOrigin {
+  MANUAL
+  RECONCILIATION
+}
+
 enum PayableInstallmentStatus {
   OPEN
   PARTIALLY_SETTLED
@@ -577,6 +588,7 @@ model Payable {
   installments PayableInstallment[]
   allocations  FinancialClassificationAllocation[]
   documents    PayableDocument[]
+  approvals     PayableApproval[]
   paymentTerm  PaymentTerm? @relation(fields: [paymentTermId], references: [id], onDelete: SetNull)
 
   @@index([legalEntityId, status])
@@ -586,6 +598,22 @@ model Payable {
   @@index([contractId])
   @@index([purchaseOrderId])
   @@map("payables")
+}
+
+model PayableApproval {
+  id             String                  @id @default(uuid()) @db.Uuid
+  payableId      String                  @db.Uuid @map("payable_id")
+  payableVersion Int                     @map("payable_version")
+  decision       PayableApprovalDecision
+  actorId        String                  @db.Uuid @map("actor_id")
+  reason         String?                 @db.Text
+  createdAt      DateTime                @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  payable Payable @relation(fields: [payableId], references: [id], onDelete: Restrict)
+
+  @@index([payableId, payableVersion, createdAt])
+  @@index([actorId, createdAt])
+  @@map("payable_approvals")
 }
 
 model PayableInstallment {
@@ -621,9 +649,11 @@ model Payment {
   currency           Currency         @default(BRL)
   financialAccountId String           @db.Uuid @map("financial_account_id")
   paymentMethod      PaymentMethod    @map("payment_method")
+  origin             PaymentOrigin    @default(MANUAL)
   reference          String?          @db.VarChar(255)
   status             SettlementStatus @default(PENDING)
   reversesPaymentId  String?          @unique @db.Uuid @map("reverses_payment_id")
+  reversalReason     String?          @db.Text @map("reversal_reason")
   createdBy          String           @db.Uuid @map("created_by")
   createdAt          DateTime         @default(now()) @db.Timestamptz(6) @map("created_at")
 
