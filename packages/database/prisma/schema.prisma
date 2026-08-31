@@ -312,12 +312,14 @@ model PaymentTermInstallmentRule {
 model Supplier {
   id                   String       @id @default(uuid()) @db.Uuid
   legalEntityId        String       @db.Uuid @map("legal_entity_id")
-  legalName            String       @db.VarChar(200) @map("legal_name")
-  tradeName            String?      @db.VarChar(200) @map("trade_name")
-  taxDocument          String       @db.VarChar(20) @map("tax_document")
-  contactName          String?      @db.VarChar(160) @map("contact_name")
-  contactEmail         String?      @db.VarChar(200) @map("contact_email")
-  contactPhone         String?      @db.VarChar(40) @map("contact_phone")
+  legalName               String?      @db.VarChar(200) @map("legal_name")
+  tradeName               String?      @db.VarChar(200) @map("trade_name")
+  taxDocument             String?      @db.VarChar(20) @map("tax_document")
+  industry                String?      @db.VarChar(100)
+  contactName             String?      @db.VarChar(160) @map("contact_name")
+  contactEmail            String?      @db.VarChar(200) @map("contact_email")
+  contactPhoneCountryCode String?      @db.VarChar(8) @map("contact_phone_country_code")
+  contactPhone            String?      @db.VarChar(40) @map("contact_phone")
   defaultPaymentTermId String?      @db.Uuid @map("default_payment_term_id")
   status               RecordStatus @default(ACTIVE)
   notes                String?      @db.Text
@@ -328,7 +330,7 @@ model Supplier {
   bankAccounts       SupplierBankAccount[]
   pixKeys            SupplierPixKey[]
 
-  @@unique([legalEntityId, taxDocument])
+  @@index([legalEntityId, taxDocument])
   @@index([legalEntityId, status])
   @@index([legalName])
   @@map("suppliers")

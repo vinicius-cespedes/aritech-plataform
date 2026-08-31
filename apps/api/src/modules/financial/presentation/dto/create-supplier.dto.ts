@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsArray, IsBoolean, IsEmail, IsOptional, IsString, IsUUID, MaxLength, ValidateNested } from 'class-validator';
+import { IsArray, IsBoolean, IsEmail, IsIn, IsOptional, IsString, IsUUID, MaxLength, ValidateNested } from 'class-validator';
+import { SUPPLIER_INDUSTRIES } from '../../domain/supplier-industries';
 
 class SupplierBankAccountDto {
   @ApiProperty() @IsString() @MaxLength(160) bankName!: string;
@@ -21,11 +22,13 @@ class SupplierPixKeyDto {
 
 export class CreateSupplierDto {
   @ApiProperty({ format: 'uuid' }) @IsUUID() legalEntityId!: string;
-  @ApiProperty() @IsString() @MaxLength(200) legalName!: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) legalName?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) tradeName?: string;
-  @ApiProperty() @IsString() @MaxLength(20) taxDocument!: string;
+  @ApiPropertyOptional({ description: 'CPF ou CNPJ. Opcional; quando informado deve ser válido.' }) @IsOptional() @IsString() @MaxLength(20) taxDocument?: string;
+  @ApiPropertyOptional({ enum: SUPPLIER_INDUSTRIES }) @IsOptional() @IsIn(SUPPLIER_INDUSTRIES) industry?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() contactName?: string;
   @ApiPropertyOptional() @IsOptional() @IsEmail() contactEmail?: string;
+  @ApiPropertyOptional({ example: '+55' }) @IsOptional() @IsString() @MaxLength(8) contactPhoneCountryCode?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() contactPhone?: string;
   @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUUID() defaultPaymentTermId?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
