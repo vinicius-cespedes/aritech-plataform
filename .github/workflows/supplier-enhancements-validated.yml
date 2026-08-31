@@ -1,0 +1,81 @@
+name: Supplier Enhancements Validated
+
+on:
+  push:
+    branches:
+      - agent/bootstrap-platform
+    paths:
+      - '.supplier-enhancements-validated-trigger'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: aritech
+          POSTGRES_PASSWORD: aritech
+          POSTGRES_DB: aritech
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aritech -d aritech"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://aritech:aritech@localhost:5432/aritech?schema=public
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/bootstrap-platform
+      - name: Reapply supplier patches from validated source
+        shell: python
+        run: |
+          from pathlib import Path
+
+          source = Path('.github/workflows/supplier-enhancements-final.yml').read_text()
+
+          def extract(step_name: str, next_step_name: str):
+              marker = f'      - name: {step_name}'
+              start = source.index(marker)
+              start = source.index('        run: |\n', start) + len('        run: |\n')
+              end = source.index(f'      - name: {next_step_name}', start)
+              lines = source[start:end].splitlines()
+              script_lines = []
+              for line in lines:
+                  if line.startswith('          '):
+                      script_lines.append(line[10:])
+                  elif line.strip() == '':
+                      script_lines.append('')
+                  else:
+                      raise RuntimeError(f'Unexpected indentation in source patch: {line!r}')
+              script = '\n'.join(script_lines)
+              compile(script, f'<{step_name}>', 'exec')
+              exec(script, {})
+
+          extract('Patch supplier data model and API', 'Patch supplier UI')
+          extract('Patch supplier UI', 'Validate and build')
+      - name: Install dependencies
+        run: |
+          corepack enable
+          pnpm install --no-frozen-lockfile
+      - name: Validate Prisma
+        run: |
+          pnpm --filter @aritech/database validate
+          pnpm --filter @aritech/database generate
+      - name: Validate migration chain
+        run: pnpm --filter @aritech/database exec prisma migrate deploy
+      - name: Build workspace
+        run: pnpm build
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages/database/prisma apps/api/src/modules/financial apps/web/app/page.tsx
+          git commit -m "feat(financial): enhance supplier registration"
+          git push origin HEAD:agent/bootstrap-platform
