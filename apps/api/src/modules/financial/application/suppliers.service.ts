@@ -5,11 +5,22 @@ import { isValidBrazilianTaxDocument, normalizeTaxDocument } from '../domain/bra
 
 @Injectable()
 export class SuppliersService {
-  list(legalEntityId: string) {
+  list(legalEntityId: string, search?: string) {
+    const term = search?.trim();
     return prisma.supplier.findMany({
-      where: { legalEntityId },
+      where: {
+        legalEntityId,
+        ...(term ? {
+          OR: [
+            { legalName: { contains: term, mode: 'insensitive' } },
+            { tradeName: { contains: term, mode: 'insensitive' } },
+            { taxDocument: { contains: term.replace(/\D/g, '') } },
+          ],
+        } : {}),
+      },
       include: { defaultPaymentTerm: true, bankAccounts: true, pixKeys: true },
       orderBy: [{ legalName: 'asc' }, { tradeName: 'asc' }],
+      take: term ? 20 : undefined,
     });
   }
 
