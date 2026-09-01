@@ -1,6 +1,6 @@
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { CostBehavior, CostDirectness, Currency, DocumentType, EconomicNature, PayableSourceType, PaymentMethod } from '@aritech/database';
+import { CostBehavior, CostDirectness, CounterpartyType, Currency, DocumentType, EconomicNature, PayableSourceType, PaymentMethod } from '@aritech/database';
 import { IsArray, IsDateString, IsEnum, IsOptional, IsString, IsUUID, Matches, MinLength, ValidateNested } from 'class-validator';
 
 class PayableInstallmentInputDto {
@@ -8,7 +8,6 @@ class PayableInstallmentInputDto {
   @ApiProperty({ example: '1000.0000' }) @IsString() @Matches(/^\d+(\.\d{1,4})?$/) amount!: string;
   @ApiPropertyOptional({ enum: PaymentMethod }) @IsOptional() @IsEnum(PaymentMethod) paymentMethod?: PaymentMethod;
 }
-
 class FinancialAllocationInputDto {
   @ApiProperty({ format: 'uuid' }) @IsUUID() managementAccountId!: string;
   @ApiProperty({ format: 'uuid' }) @IsUUID() costCenterId!: string;
@@ -23,16 +22,15 @@ class FinancialAllocationInputDto {
   @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUUID() dreGroupId?: string;
   @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUUID() cashFlowGroupId?: string;
 }
-
 class PayableDocumentInputDto {
   @ApiProperty({ format: 'uuid' }) @IsUUID() documentId!: string;
   @ApiPropertyOptional({ enum: DocumentType }) @IsOptional() @IsEnum(DocumentType) type?: DocumentType;
   @ApiPropertyOptional() @IsOptional() @IsString() label?: string;
 }
-
 export class CreatePayableDto {
   @ApiProperty({ format: 'uuid' }) @IsUUID() legalEntityId!: string;
-  @ApiProperty({ format: 'uuid' }) @IsUUID() supplierId!: string;
+  @ApiProperty({ enum: CounterpartyType }) @IsEnum(CounterpartyType) counterpartyType!: CounterpartyType;
+  @ApiProperty({ format: 'uuid' }) @IsUUID() counterpartyId!: string;
   @ApiProperty() @IsString() @MinLength(3) description!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() documentNumber?: string;
   @ApiPropertyOptional({ enum: DocumentType }) @IsOptional() @IsEnum(DocumentType) documentType?: DocumentType;
@@ -45,9 +43,9 @@ export class CreatePayableDto {
   @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUUID() contractId?: string;
   @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUUID() purchaseOrderId?: string;
   @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUUID() paymentTermId?: string;
-  @ApiPropertyOptional({ description: 'Base para geração automática das parcelas; normalmente emissão.' }) @IsOptional() @IsDateString() paymentTermBaseDate?: string;
+  @ApiPropertyOptional() @IsOptional() @IsDateString() paymentTermBaseDate?: string;
   @ApiPropertyOptional({ type: [PayableInstallmentInputDto] }) @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => PayableInstallmentInputDto) installments?: PayableInstallmentInputDto[];
   @ApiProperty({ type: [FinancialAllocationInputDto] }) @IsArray() @ValidateNested({ each: true }) @Type(() => FinancialAllocationInputDto) allocations!: FinancialAllocationInputDto[];
   @ApiPropertyOptional({ type: [PayableDocumentInputDto] }) @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => PayableDocumentInputDto) documents?: PayableDocumentInputDto[];
-  @ApiProperty({ format: 'uuid', description: 'Temporário até autenticação fornecer o usuário da sessão.' }) @IsUUID() createdBy!: string;
+  @ApiProperty({ format: 'uuid' }) @IsUUID() createdBy!: string;
 }
