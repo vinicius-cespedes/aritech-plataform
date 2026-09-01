@@ -10,7 +10,8 @@ export class SuppliersController {
 
   @Get()
   @ApiQuery({ name: 'legalEntityId', format: 'uuid' })
-  list(@Query('legalEntityId') legalEntityId: string) { return this.service.list(legalEntityId); }
+  @ApiQuery({ name: 'search', required: false, description: 'Busca por razão social, nome fantasia ou CPF/CNPJ' })
+  list(@Query('legalEntityId') legalEntityId: string, @Query('search') search?: string) { return this.service.list(legalEntityId, search); }
 
   @Post()
   @ApiOperation({ summary: 'Cadastra fornecedor com contas bancárias e chaves PIX' })
