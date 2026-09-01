@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { EmployeesService } from '../application/employees.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
@@ -18,4 +18,14 @@ export class EmployeesController {
   @Post()
   @ApiOperation({ summary:'Cadastra colaborador para uso como contraparte financeira' })
   create(@Body() input:CreateEmployeeDto) { return this.service.create(input); }
+
+  @Patch(':id')
+  update(@Param('id') id:string, @Body() input:CreateEmployeeDto) {
+    return this.service.update(id, input);
+  }
+
+  @Delete(':id')
+  remove(@Param('id') id:string, @Query('legalEntityId') legalEntityId:string) {
+    return this.service.remove(id, legalEntityId);
+  }
 }
