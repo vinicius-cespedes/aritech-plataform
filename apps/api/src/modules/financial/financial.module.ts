@@ -5,6 +5,8 @@ import { FinancialCatalogsController } from './presentation/financial-catalogs.c
 import { FinancialCatalogsService } from './application/financial-catalogs.service';
 import { SuppliersController } from './presentation/suppliers.controller';
 import { SuppliersService } from './application/suppliers.service';
+import { EmployeesController } from './presentation/employees.controller';
+import { EmployeesService } from './application/employees.service';
 import { PaymentTermsController } from './presentation/payment-terms.controller';
 import { PaymentTermsService } from './application/payment-terms.service';
 import { PayablesController } from './presentation/payables.controller';
@@ -19,7 +21,7 @@ import { BankReconciliationController } from './presentation/bank-reconciliation
 import { BankReconciliationService } from './application/bank-reconciliation.service';
 
 @Module({
-  controllers: [FinancialAccountsController, FinancialCatalogsController, SuppliersController, PaymentTermsController, PayablesController, PayableApprovalPolicyController, PayableApprovalsController, PaymentsController, BankReconciliationController],
-  providers: [FinancialAccountsService, FinancialCatalogsService, SuppliersService, PaymentTermsService, PayablesService, PayableApprovalPolicyService, PayableApprovalsService, PaymentsService, BankReconciliationService],
+  controllers: [FinancialAccountsController, FinancialCatalogsController, SuppliersController, EmployeesController, PaymentTermsController, PayablesController, PayableApprovalPolicyController, PayableApprovalsController, PaymentsController, BankReconciliationController],
+  providers: [FinancialAccountsService, FinancialCatalogsService, SuppliersService, EmployeesService, PaymentTermsService, PayablesService, PayableApprovalPolicyService, PayableApprovalsService, PaymentsService, BankReconciliationService],
 })
 export class FinancialModule {}
