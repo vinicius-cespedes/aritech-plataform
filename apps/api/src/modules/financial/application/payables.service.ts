@@ -52,7 +52,7 @@ export class PayablesService {
       const defaultsById = new Map(accountDefaults.map(account => [account.id, account]));
       if (defaultsById.size !== new Set(input.allocations.map(a => a.managementAccountId)).size) throw new BadRequestException('INVALID_MANAGEMENT_ACCOUNT');
 
-      return tx.payable.create({
+      const created = await tx.payable.create({
         data: {
           legalEntityId: input.legalEntityId,
           counterpartyId: input.counterpartyId,
@@ -72,11 +72,14 @@ export class PayablesService {
           paymentTermId: effectivePaymentTermId,
           createdBy: input.createdBy,
           installments: { create: installments.map((installment,index)=>({ sequence:index+1,dueDate:installment.dueDate,originalDueDate:installment.dueDate,expectedPaymentDate:installment.dueDate,originalAmount:installment.amount,openAmount:installment.amount,paymentMethod:installment.paymentMethod })) },
-          allocations: { create: input.allocations.map(allocation=>{ const account=defaultsById.get(allocation.managementAccountId)!; return { sourceType:'PAYABLE',managementAccountId:allocation.managementAccountId,economicNature:allocation.economicNature,dreGroupId:allocation.dreGroupId??account.dreGroupId,cashFlowGroupId:allocation.cashFlowGroupId??account.cashFlowGroupId,costCenterId:allocation.costCenterId,businessLineId:allocation.businessLineId,projectId:allocation.projectId,contractId:allocation.contractId??input.contractId,amount:allocation.amount,competenceDate:new Date(allocation.competenceDate??input.competenceDate),costBehavior:allocation.costBehavior,costDirectness:allocation.costDirectness,createdBy:input.createdBy }; }) },
+          allocations: { create: input.allocations.map(allocation=>{ const account=defaultsById.get(allocation.managementAccountId)!; return { sourceType:'PAYABLE',managementAccountId:allocation.managementAccountId,economicNature:allocation.economicNature??account.economicNature,dreGroupId:allocation.dreGroupId??account.dreGroupId,cashFlowGroupId:allocation.cashFlowGroupId??account.cashFlowGroupId,costCenterId:allocation.costCenterId,businessLineId:allocation.businessLineId,projectId:allocation.projectId,contractId:allocation.contractId??input.contractId,amount:allocation.amount,competenceDate:new Date(allocation.competenceDate??input.competenceDate),costBehavior:allocation.costBehavior??account.defaultCostBehavior,costDirectness:allocation.costDirectness,createdBy:input.createdBy }; }) },
           documents: input.documents ? { create: input.documents } : undefined,
         },
         include: { installments:true, allocations:true, documents:true, paymentTerm:true },
       });
+
+      await tx.$executeRaw(Prisma.sql`UPDATE payables SET obligation_type=${input.obligationType} WHERE id=${created.id}::uuid`);
+      return { ...created, obligationType: input.obligationType };
     });
   }
 
