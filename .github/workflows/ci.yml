@@ -59,5 +59,8 @@ jobs:
       - name: Verify seed idempotency
         run: pnpm --filter @aritech/database seed
 
+      - name: Financial regression baseline
+        run: node scripts/check-financial-baseline.mjs
+
       - name: Build workspace
         run: pnpm build
