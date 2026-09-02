@@ -4,11 +4,21 @@ import { CreatePayableDto } from '../presentation/dto/create-payable.dto';
 
 @Injectable()
 export class PayablesService {
-  list(legalEntityId: string) {
-    return prisma.payable.findMany({ where: { legalEntityId }, include: { installments: true, allocations: true, documents: true, paymentTerm: true }, orderBy: { competenceDate: 'desc' } });
+  async list(legalEntityId: string) {
+    const payables = await prisma.payable.findMany({ where: { legalEntityId }, include: { installments: true, allocations: true, documents: true, paymentTerm: true }, orderBy: { competenceDate: 'desc' } });
+    const obligations = await prisma.$queryRaw<Array<{id:string; obligationType:string|null}>>(Prisma.sql`
+      SELECT id, obligation_type AS "obligationType" FROM payables WHERE legal_entity_id=${legalEntityId}::uuid
+    `);
+    const byId = new Map(obligations.map(item => [item.id, item.obligationType]));
+    return payables.map(item => ({ ...item, obligationType: byId.get(item.id) ?? null }));
   }
-  get(id: string) {
-    return prisma.payable.findUnique({ where: { id }, include: { installments: true, allocations: true, documents: true, paymentTerm: { include: { rules: true } } } });
+  async get(id: string) {
+    const payable = await prisma.payable.findUnique({ where: { id }, include: { installments: true, allocations: true, documents: true, paymentTerm: { include: { rules: true } } } });
+    if (!payable) return null;
+    const rows = await prisma.$queryRaw<Array<{obligationType:string|null}>>(Prisma.sql`
+      SELECT obligation_type AS "obligationType" FROM payables WHERE id=${id}::uuid LIMIT 1
+    `);
+    return { ...payable, obligationType: rows[0]?.obligationType ?? null };
   }
 
   async create(input: CreatePayableDto) {
