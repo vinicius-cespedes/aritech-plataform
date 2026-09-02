@@ -2,97 +2,84 @@
 
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 
-type Item = { id:string; code?:string; name:string; institutionName?:string; type?:string };
-type Catalogs = { managementAccounts:Item[]; costCenters:Item[]; businessLines:Item[]; projects:Item[]; financialAccounts:Item[]; paymentTerms:Item[] };
-type Supplier = { id:string; legalName?:string; tradeName?:string; taxDocument?:string };
+type Item={id:string;code?:string;name:string};
+type Catalogs={managementAccounts:Item[];costCenters:Item[];businessLines:Item[];projects:Item[];financialAccounts:Item[];paymentTerms:Item[]};
+type Supplier={id:string;legalName?:string;tradeName?:string;taxDocument?:string};
+type Employee={id:string;name:string;taxDocument?:string;jobTitle?:string};
+type CounterpartyType='SUPPLIER'|'EMPLOYEE';
 
-const apiBase = process.env.NEXT_PUBLIC_API_URL ? `${process.env.NEXT_PUBLIC_API_URL}/api` : 'http://localhost:3001/api';
+type Obligation={value:string;label:string;sourceType:string};
+const SUPPLIER_OBLIGATIONS:Obligation[]=[
+  {value:'SUPPLIER_PAYMENT',label:'Pagamento a fornecedor',sourceType:'MANUAL_ENTRY'},
+  {value:'RENT',label:'Aluguel',sourceType:'RENT'},
+  {value:'TAX',label:'Tributo / taxa',sourceType:'TAX'},
+  {value:'OTHER',label:'Outro',sourceType:'OTHER'},
+];
+const EMPLOYEE_OBLIGATIONS:Obligation[]=[
+  {value:'SALARY',label:'Salário',sourceType:'PAYROLL'},
+  {value:'SALARY_ADVANCE',label:'Adiantamento salarial',sourceType:'PAYROLL'},
+  {value:'VACATION',label:'Férias',sourceType:'PAYROLL'},
+  {value:'THIRTEENTH_SALARY',label:'13º salário',sourceType:'PAYROLL'},
+  {value:'REIMBURSEMENT',label:'Reembolso',sourceType:'EXPENSE_REIMBURSEMENT'},
+  {value:'BENEFIT',label:'Benefício',sourceType:'PAYROLL'},
+  {value:'TERMINATION',label:'Rescisão',sourceType:'PAYROLL'},
+  {value:'PRO_LABORE',label:'Pró-labore',sourceType:'PAYROLL'},
+  {value:'OTHER',label:'Outro',sourceType:'OTHER'},
+];
+
+const apiBase=process.env.NEXT_PUBLIC_API_URL?`${process.env.NEXT_PUBLIC_API_URL}/api`:'http://localhost:3001/api';
 const supplierName=(s:Supplier)=>s.legalName||s.tradeName||'Fornecedor sem nome';
-const formatMoneyInput=(value:string)=>{
-  const digits=value.replace(/\D/g,'');
-  if(!digits)return '';
-  const cents=Number(digits)/100;
-  return new Intl.NumberFormat('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}).format(cents);
-};
-const moneyInputToDecimal=(value:string)=>{
-  const digits=value.replace(/\D/g,'');
-  return digits ? (Number(digits)/100).toFixed(2) : '0.00';
-};
+const onlyDigits=(v:string)=>v.replace(/\D/g,'');
+const formatCpf=(v:string)=>{const d=onlyDigits(v).slice(0,11);return d.replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})(\d{1,2})$/,'$1-$2')};
+const formatMoneyInput=(value:string)=>{const digits=onlyDigits(value);if(!digits)return'';return new Intl.NumberFormat('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(digits)/100)};
+const moneyInputToDecimal=(value:string)=>{const digits=onlyDigits(value);return digits?(Number(digits)/100).toFixed(2):'0.00'};
 
 export default function NewPayablePage(){
-  const today=new Date().toISOString().slice(0,10);
-  const currentMonth=today.slice(0,7);
+  const today=new Date().toISOString().slice(0,10),currentMonth=today.slice(0,7);
   const [legalEntityId,setLegalEntityId]=useState('');
   const [actorId,setActorId]=useState('');
   const [catalogs,setCatalogs]=useState<Catalogs|null>(null);
+  const [counterpartyType,setCounterpartyType]=useState<CounterpartyType>('SUPPLIER');
   const [suppliers,setSuppliers]=useState<Supplier[]>([]);
-  const [supplierSearch,setSupplierSearch]=useState('');
-  const [supplierOpen,setSupplierOpen]=useState(false);
-  const [showQuickSupplier,setShowQuickSupplier]=useState(false);
+  const [employees,setEmployees]=useState<Employee[]>([]);
+  const [search,setSearch]=useState('');
+  const [resultsOpen,setResultsOpen]=useState(false);
+  const [selectedId,setSelectedId]=useState('');
+  const [quickOpen,setQuickOpen]=useState(false);
   const [quickSupplier,setQuickSupplier]=useState({legalName:'',tradeName:'',taxDocument:''});
+  const [quickEmployee,setQuickEmployee]=useState({name:'',taxDocument:'',jobTitle:'',employmentType:'CLT'});
   const [message,setMessage]=useState('');
   const [error,setError]=useState('');
-  const [form,setForm]=useState({supplierId:'',description:'',originalAmount:'',issueDate:today,competenceMonth:currentMonth,dueDate:today,managementAccountId:'',costCenterId:'',businessLineId:'',projectId:'',costDirectness:'INDIRECT'});
+  const obligations=counterpartyType==='EMPLOYEE'?EMPLOYEE_OBLIGATIONS:SUPPLIER_OBLIGATIONS;
+  const [form,setForm]=useState({obligationType:'SUPPLIER_PAYMENT',description:'',documentNumber:'',originalAmount:'',issueDate:today,competenceMonth:currentMonth,dueDate:today,paymentTermId:'',managementAccountId:'',costCenterId:'',businessLineId:'',projectId:'',costDirectness:'INDIRECT'});
 
-  async function api<T>(path:string,init?:RequestInit){const r=await fetch(`${apiBase}${path}`,{...init,headers:{'Content-Type':'application/json',...(init?.headers||{})}});const b=await r.json();if(!r.ok)throw new Error(b?.message||'Falha na API');return b as T}
-  async function load(){setError('');try{const [c,s]=await Promise.all([api<Catalogs>(`/financial/catalogs?legalEntityId=${legalEntityId}`),api<Supplier[]>(`/financial/suppliers?legalEntityId=${legalEntityId}`)]);setCatalogs(c);setSuppliers(s)}catch(e){setError(e instanceof Error?e.message:'Erro ao carregar catálogos')}}
+  async function api<T>(path:string,init?:RequestInit){const r=await fetch(`${apiBase}${path}`,{...init,headers:{'Content-Type':'application/json',...(init?.headers||{})}});const text=await r.text();const b=text?JSON.parse(text):null;if(!r.ok)throw new Error(b?.message||'Falha na API');return b as T}
+  async function load(){if(!legalEntityId)return;setError('');try{const[c,s,e]=await Promise.all([api<Catalogs>(`/financial/catalogs?legalEntityId=${legalEntityId}`),api<Supplier[]>(`/financial/suppliers?legalEntityId=${legalEntityId}`),api<Employee[]>(`/financial/employees?legalEntityId=${legalEntityId}`)]);setCatalogs(c);setSuppliers(s);setEmployees(e)}catch(err){setError(err instanceof Error?err.message:'Erro ao carregar dados')}}
   useEffect(()=>{if(legalEntityId)void load()},[legalEntityId]);
+  useEffect(()=>{if(!legalEntityId)return;const timer=setTimeout(async()=>{try{const q=search.trim();if(counterpartyType==='SUPPLIER')setSuppliers(await api<Supplier[]>(`/financial/suppliers?legalEntityId=${legalEntityId}${q?`&search=${encodeURIComponent(q)}`:''}`));else setEmployees(await api<Employee[]>(`/financial/employees?legalEntityId=${legalEntityId}${q?`&search=${encodeURIComponent(q)}`:''}`))}catch{}},250);return()=>clearTimeout(timer)},[search,legalEntityId,counterpartyType]);
 
-  useEffect(()=>{
-    if(!legalEntityId){return}
-    const timer=setTimeout(async()=>{
-      try{
-        const query=supplierSearch.trim();
-        const result=await api<Supplier[]>(`/financial/suppliers?legalEntityId=${legalEntityId}${query?`&search=${encodeURIComponent(query)}`:''}`);
-        setSuppliers(result);
-      }catch{}
-    },250);
-    return()=>clearTimeout(timer);
-  },[supplierSearch,legalEntityId]);
+  const display=(x:Supplier|Employee)=>counterpartyType==='SUPPLIER'?supplierName(x as Supplier):(x as Employee).name;
+  const list=counterpartyType==='SUPPLIER'?suppliers:employees;
+  const selected=useMemo(()=>list.find(x=>x.id===selectedId),[list,selectedId]);
+  function resetCounterparty(type:CounterpartyType){setCounterpartyType(type);setSearch('');setSelectedId('');setQuickOpen(false);setResultsOpen(false);const first=(type==='EMPLOYEE'?EMPLOYEE_OBLIGATIONS:SUPPLIER_OBLIGATIONS)[0].value;setForm(f=>({...f,obligationType:first}))}
+  function choose(x:Supplier|Employee){setSelectedId(x.id);setSearch(display(x));setResultsOpen(false);setQuickOpen(false)}
 
-  const selectedSupplier=useMemo(()=>suppliers.find(s=>s.id===form.supplierId),[suppliers,form.supplierId]);
-  const exactMatch=useMemo(()=>suppliers.some(s=>supplierName(s).toLocaleLowerCase('pt-BR')===supplierSearch.trim().toLocaleLowerCase('pt-BR')),[suppliers,supplierSearch]);
+  async function quickCreate(){setError('');try{if(counterpartyType==='SUPPLIER'){if(!quickSupplier.legalName.trim()&&!quickSupplier.tradeName.trim())throw new Error('Informe a razão social ou o nome fantasia.');const created=await api<Supplier>('/financial/suppliers',{method:'POST',body:JSON.stringify({legalEntityId,...quickSupplier,taxDocument:quickSupplier.taxDocument||undefined})});setSuppliers(p=>[created,...p]);choose(created);setQuickSupplier({legalName:'',tradeName:'',taxDocument:''})}else{if(!quickEmployee.name.trim())throw new Error('Informe o nome do colaborador.');const created=await api<Employee>('/financial/employees',{method:'POST',body:JSON.stringify({legalEntityId,...quickEmployee,taxDocument:onlyDigits(quickEmployee.taxDocument)||undefined})});setEmployees(p=>[created,...p]);choose(created);setQuickEmployee({name:'',taxDocument:'',jobTitle:'',employmentType:'CLT'})}setMessage('Beneficiário criado e selecionado.')}catch(err){setError(err instanceof Error?err.message:'Erro ao cadastrar beneficiário')}}
 
-  function chooseSupplier(s:Supplier){setForm({...form,supplierId:s.id});setSupplierSearch(supplierName(s));setSupplierOpen(false);setShowQuickSupplier(false)}
-
-  async function createQuickSupplier(){
-    setError('');
-    if(!quickSupplier.legalName.trim()&&!quickSupplier.tradeName.trim()){setError('Informe a razão social ou o nome fantasia do novo fornecedor.');return}
-    try{
-      const created=await api<Supplier>('/financial/suppliers',{method:'POST',body:JSON.stringify({legalEntityId,legalName:quickSupplier.legalName||undefined,tradeName:quickSupplier.tradeName||undefined,taxDocument:quickSupplier.taxDocument||undefined})});
-      setSuppliers(prev=>[created,...prev]);
-      chooseSupplier(created);
-      setQuickSupplier({legalName:'',tradeName:'',taxDocument:''});
-      setMessage('Fornecedor criado e selecionado.');
-    }catch(e){setError(e instanceof Error?e.message:'Erro ao criar fornecedor')}
-  }
-
-  async function submit(e:FormEvent){
-    e.preventDefault();setError('');setMessage('');
-    if(!form.supplierId){setError('Selecione ou cadastre um fornecedor.');return}
-    if(form.costDirectness==='DIRECT'&&(!form.businessLineId||!form.projectId)){setError('Custos diretos exigem linha de negócio e projeto.');return}
-    const competenceDate=`${form.competenceMonth}-01`;
-    const originalAmount=moneyInputToDecimal(form.originalAmount);
-    if(Number(originalAmount)<=0){setError('Informe um valor maior que zero.');return}
-    try{
-      await api('/financial/payables',{method:'POST',body:JSON.stringify({legalEntityId,supplierId:form.supplierId,description:form.description,competenceDate,issueDate:form.issueDate,originalAmount,currency:'BRL',sourceType:'MANUAL_ENTRY',createdBy:actorId,installments:[{dueDate:form.dueDate,amount:originalAmount}],allocations:[{managementAccountId:form.managementAccountId,costCenterId:form.costCenterId,businessLineId:form.businessLineId||undefined,projectId:form.projectId||undefined,amount:originalAmount,economicNature:'OPERATING_EXPENSE',costDirectness:form.costDirectness}]})});
-      setMessage('Conta a pagar criada com sucesso.');
-    }catch(e){setError(e instanceof Error?e.message:'Erro ao salvar')}
-  }
+  async function submit(e:FormEvent){e.preventDefault();setError('');setMessage('');if(!selectedId)return setError('Selecione um beneficiário.');if(form.costDirectness==='DIRECT'&&(!form.businessLineId||!form.projectId))return setError('Custos diretos exigem linha de negócio e projeto.');const originalAmount=moneyInputToDecimal(form.originalAmount);if(Number(originalAmount)<=0)return setError('Informe um valor maior que zero.');const obligation=obligations.find(o=>o.value===form.obligationType)!;const payload:any={legalEntityId,counterpartyType,counterpartyId:selectedId,obligationType:form.obligationType,description:form.description,documentNumber:form.documentNumber||undefined,competenceDate:`${form.competenceMonth}-01`,issueDate:form.issueDate,originalAmount,currency:'BRL',sourceType:obligation.sourceType,createdBy:actorId,allocations:[{managementAccountId:form.managementAccountId,costCenterId:form.costCenterId,businessLineId:form.businessLineId||undefined,projectId:form.projectId||undefined,amount:originalAmount,costDirectness:form.costDirectness}]};if(form.paymentTermId){payload.paymentTermId=form.paymentTermId;payload.paymentTermBaseDate=form.issueDate}else payload.installments=[{dueDate:form.dueDate,amount:originalAmount}];try{await api('/financial/payables',{method:'POST',body:JSON.stringify(payload)});setMessage('Conta a pagar criada e enviada para aprovação.');setForm(f=>({...f,description:'',documentNumber:'',originalAmount:''}));setSearch('');setSelectedId('')}catch(err){setError(err instanceof Error?err.message:'Erro ao salvar')}}
 
   const Select=({label,value,onChange,items,required=true,disabled=false,placeholder='Selecione'}:{label:string;value:string;onChange:(v:string)=>void;items:Item[];required?:boolean;disabled?:boolean;placeholder?:string})=><label className="field"><span>{label}</span><select value={value} onChange={e=>onChange(e.target.value)} required={required} disabled={disabled}><option value="">{placeholder}</option>{items.map(i=><option key={i.id} value={i.id}>{i.code?`${i.code} · `:''}{i.name}</option>)}</select></label>;
 
-  return <main className="wrap"><header><div><p className="eyebrow">Financeiro · Contas a pagar</p><h1>Nova conta a pagar</h1><p className="muted">Registro financeiro com busca de fornecedor e classificação gerencial.</p></div><a href="/">← Voltar ao workspace</a></header>
-    <section className="env"><label>Legal Entity ID<input value={legalEntityId} onChange={e=>setLegalEntityId(e.target.value)} placeholder="temporário até autenticação"/></label><label>Actor/User ID<input value={actorId} onChange={e=>setActorId(e.target.value)} placeholder="temporário até autenticação"/></label><button type="button" onClick={load} disabled={!legalEntityId}>Atualizar catálogos</button></section>
+  return <main className="wrap"><header><div><p className="eyebrow">Financeiro · Contas a pagar</p><h1>Nova conta a pagar</h1><p className="muted">Fornecedor ou colaborador, obrigação, vencimento e classificação gerencial em um único fluxo.</p></div><a href="/">← Voltar ao workspace</a></header>
+    <section className="env"><label>Legal Entity ID<input value={legalEntityId} onChange={e=>setLegalEntityId(e.target.value)} placeholder="temporário até autenticação"/></label><label>Actor/User ID<input value={actorId} onChange={e=>setActorId(e.target.value)} placeholder="temporário até autenticação"/></label><button type="button" onClick={load} disabled={!legalEntityId}>Atualizar dados</button></section>
     {error&&<div className="errorBox">{error}</div>}{message&&<div className="successBox">{message}</div>}
-    <form onSubmit={submit} className="card"><h2>Documento</h2><div className="grid">
-      <div className="field full supplierField"><span>Fornecedor</span><input autoComplete="off" value={supplierSearch} placeholder="Comece a digitar o nome do fornecedor" onFocus={()=>setSupplierOpen(true)} onChange={e=>{setSupplierSearch(e.target.value);setForm({...form,supplierId:''});setSupplierOpen(true);setShowQuickSupplier(false)}}/>
-        {supplierOpen&&supplierSearch.trim()&&<div className="results">{suppliers.length?suppliers.map(s=><button type="button" key={s.id} onClick={()=>chooseSupplier(s)}><b>{supplierName(s)}</b>{s.legalName&&s.tradeName&&<small>{s.tradeName}</small>}</button>):<div className="noResult">Nenhum fornecedor encontrado.</div>}{!exactMatch&&<button type="button" className="createInline" onClick={()=>{setShowQuickSupplier(true);setQuickSupplier(q=>({...q,tradeName:supplierSearch}));setSupplierOpen(false)}}>+ Cadastrar “{supplierSearch}” como novo fornecedor</button>}</div>}
-        {selectedSupplier&&<small className="selected">Selecionado: {supplierName(selectedSupplier)}</small>}
-      </div>
-      {showQuickSupplier&&<div className="quick full"><div className="quickTitle">Cadastrar fornecedor sem sair da conta a pagar</div><div className="grid"><label className="field"><span>Razão social</span><input value={quickSupplier.legalName} onChange={e=>setQuickSupplier({...quickSupplier,legalName:e.target.value})}/></label><label className="field"><span>Nome fantasia</span><input value={quickSupplier.tradeName} onChange={e=>setQuickSupplier({...quickSupplier,tradeName:e.target.value})}/></label><label className="field"><span>CPF/CNPJ (opcional)</span><input value={quickSupplier.taxDocument} onChange={e=>setQuickSupplier({...quickSupplier,taxDocument:e.target.value})}/></label></div><div className="quickActions"><button type="button" onClick={()=>setShowQuickSupplier(false)}>Cancelar</button><button className="primary" type="button" onClick={createQuickSupplier}>Criar e selecionar</button></div></div>}
-      <label className="field full"><span>Descrição</span><input required value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/></label><label className="field"><span>Valor</span><input required inputMode="numeric" value={form.originalAmount} placeholder="0,00" onChange={e=>setForm({...form,originalAmount:formatMoneyInput(e.target.value)})}/><small>Digite apenas os números; os centavos e separadores são aplicados automaticamente.</small></label><label className="field"><span>Emissão</span><input type="date" value={form.issueDate} onChange={e=>setForm({...form,issueDate:e.target.value})}/></label><label className="field"><span>Competência</span><input required type="month" value={form.competenceMonth} onChange={e=>setForm({...form,competenceMonth:e.target.value})}/><small>Mês e ano de competência</small></label><label className="field"><span>Vencimento</span><input required type="date" value={form.dueDate} onChange={e=>setForm({...form,dueDate:e.target.value})}/></label></div>
-      <h2>Classificação gerencial</h2><div className="grid"><Select label="Conta gerencial" value={form.managementAccountId} onChange={v=>setForm({...form,managementAccountId:v})} items={catalogs?.managementAccounts||[]}/><Select label="Centro de custo" value={form.costCenterId} onChange={v=>setForm({...form,costCenterId:v})} items={catalogs?.costCenters||[]}/><label className="field"><span>Classificação</span><select value={form.costDirectness} onChange={e=>setForm({...form,costDirectness:e.target.value})}><option value="INDIRECT">Indireto</option><option value="DIRECT">Direto</option></select></label><Select label="Linha de negócio" required={form.costDirectness==='DIRECT'} value={form.businessLineId} onChange={v=>setForm({...form,businessLineId:v})} items={catalogs?.businessLines||[]}/><Select label="Projeto" required={form.costDirectness==='DIRECT'} value={form.projectId} onChange={v=>setForm({...form,projectId:v})} items={catalogs?.projects||[]} disabled={!catalogs?.projects.length} placeholder={catalogs?.projects.length?'Selecione':'Nenhum projeto cadastrado'}/></div>
-      <div className="actions"><button className="primary" disabled={!catalogs}>Salvar conta a pagar</button></div></form>
-    <style jsx>{`*{box-sizing:border-box}.wrap{max-width:1100px;margin:0 auto;padding:32px 20px 64px;color:#172033}header{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;margin-bottom:24px}h1{font-size:32px;margin:4px 0}h2{font-size:18px;margin:24px 0 14px}.eyebrow{font-size:12px;text-transform:uppercase;letter-spacing:.12em;font-weight:700;color:#64748b}.muted{color:#64748b}.env,.card{border:1px solid #e2e8f0;border-radius:16px;background:#fff;padding:20px}.env{display:grid;grid-template-columns:1fr 1fr auto;gap:12px;align-items:end;margin-bottom:18px}.env label,.field{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:600}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.full{grid-column:1/-1}input,select,button{min-height:44px;border:1px solid #cbd5e1;border-radius:9px;padding:10px 12px;font:inherit;background:#fff}select:disabled{background:#f1f5f9;color:#64748b}button{cursor:pointer;font-weight:700}.primary{background:#172033;color:white;border-color:#172033}.actions,.quickActions{display:flex;justify-content:flex-end;gap:10px;margin-top:24px}.errorBox,.successBox{padding:12px 14px;border-radius:10px;margin-bottom:14px}.errorBox{background:#fef2f2;color:#991b1b}.successBox{background:#f0fdf4;color:#166534}a{color:#334155;font-weight:700;text-decoration:none}.supplierField{position:relative}.results{position:absolute;top:70px;left:0;right:0;z-index:10;background:white;border:1px solid #cbd5e1;border-radius:10px;box-shadow:0 10px 25px rgba(15,23,42,.12);padding:6px;max-height:300px;overflow:auto}.results button{width:100%;text-align:left;border:0;background:white;display:flex;flex-direction:column;align-items:flex-start}.results button:hover{background:#f8fafc}.results small{color:#64748b}.createInline{color:#1d4ed8!important;border-top:1px solid #e2e8f0!important;border-radius:0!important}.noResult{padding:12px;color:#64748b}.selected{color:#166534}.quick{padding:16px;border:1px solid #bfdbfe;border-radius:12px;background:#eff6ff}.quickTitle{font-weight:800;margin-bottom:12px}.quickActions{margin-top:12px}.field small{font-weight:400;color:#64748b}@media(max-width:700px){header{flex-direction:column}.env,.grid{grid-template-columns:1fr}.full{grid-column:auto}.results{top:70px}}`}</style></main>
+    <form onSubmit={submit} className="card"><h2>Obrigação</h2><div className="grid">
+      <label className="field"><span>Tipo de beneficiário</span><select value={counterpartyType} onChange={e=>resetCounterparty(e.target.value as CounterpartyType)}><option value="SUPPLIER">Fornecedor</option><option value="EMPLOYEE">Colaborador</option></select></label>
+      <label className="field"><span>Tipo da obrigação</span><select value={form.obligationType} onChange={e=>setForm({...form,obligationType:e.target.value})}>{obligations.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select></label>
+      <div className="field full cpField"><span>{counterpartyType==='SUPPLIER'?'Fornecedor':'Colaborador'}</span><input autoComplete="off" value={search} placeholder="Comece a digitar o nome" onFocus={()=>setResultsOpen(true)} onChange={e=>{setSearch(e.target.value);setSelectedId('');setResultsOpen(true);setQuickOpen(false)}}/>{resultsOpen&&search.trim()&&<div className="results">{list.length?list.map(x=><button type="button" key={x.id} onClick={()=>choose(x)}><b>{display(x)}</b><small>{counterpartyType==='EMPLOYEE'?(x as Employee).jobTitle||formatCpf((x as Employee).taxDocument||''):(x as Supplier).tradeName||''}</small></button>):<div className="noResult">Nenhum cadastro encontrado.</div>}<button type="button" className="createInline" onClick={()=>{setQuickOpen(true);setResultsOpen(false);counterpartyType==='SUPPLIER'?setQuickSupplier(q=>({...q,tradeName:search})):setQuickEmployee(q=>({...q,name:search}))}}>+ Cadastrar novo {counterpartyType==='SUPPLIER'?'fornecedor':'colaborador'}</button></div>}{selected&&<small className="selected">Selecionado: {display(selected)}</small>}</div>
+      {quickOpen&&<div className="quick full"><b>Cadastro rápido de {counterpartyType==='SUPPLIER'?'fornecedor':'colaborador'}</b><div className="grid quickGrid">{counterpartyType==='SUPPLIER'?<><label className="field"><span>Razão social</span><input value={quickSupplier.legalName} onChange={e=>setQuickSupplier({...quickSupplier,legalName:e.target.value})}/></label><label className="field"><span>Nome fantasia</span><input value={quickSupplier.tradeName} onChange={e=>setQuickSupplier({...quickSupplier,tradeName:e.target.value})}/></label><label className="field"><span>CPF/CNPJ (opcional)</span><input value={quickSupplier.taxDocument} onChange={e=>setQuickSupplier({...quickSupplier,taxDocument:e.target.value})}/></label></>:<><label className="field"><span>Nome</span><input value={quickEmployee.name} onChange={e=>setQuickEmployee({...quickEmployee,name:e.target.value})}/></label><label className="field"><span>CPF (opcional)</span><input value={formatCpf(quickEmployee.taxDocument)} onChange={e=>setQuickEmployee({...quickEmployee,taxDocument:onlyDigits(e.target.value)})}/></label><label className="field"><span>Cargo / função</span><input value={quickEmployee.jobTitle} onChange={e=>setQuickEmployee({...quickEmployee,jobTitle:e.target.value})}/></label></>}</div><div className="actions mini"><button type="button" onClick={()=>setQuickOpen(false)}>Cancelar</button><button type="button" className="primary" onClick={quickCreate}>Criar e selecionar</button></div></div>}
+      <label className="field full"><span>Descrição</span><input required value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/></label><label className="field"><span>Nº do documento</span><input value={form.documentNumber} onChange={e=>setForm({...form,documentNumber:e.target.value})}/></label><label className="field"><span>Valor (R$)</span><input required inputMode="numeric" value={form.originalAmount} placeholder="0,00" onChange={e=>setForm({...form,originalAmount:formatMoneyInput(e.target.value)})}/></label><label className="field"><span>Emissão</span><input type="date" value={form.issueDate} onChange={e=>setForm({...form,issueDate:e.target.value})}/></label><label className="field"><span>Competência</span><input required type="month" value={form.competenceMonth} onChange={e=>setForm({...form,competenceMonth:e.target.value})}/></label>
+      <Select label="Condição de pagamento" required={false} value={form.paymentTermId} onChange={v=>setForm({...form,paymentTermId:v})} items={catalogs?.paymentTerms||[]} placeholder="Parcela única / vencimento manual"/>{!form.paymentTermId&&<label className="field"><span>Vencimento</span><input required type="date" value={form.dueDate} onChange={e=>setForm({...form,dueDate:e.target.value})}/></label>}
+    </div><h2>Classificação gerencial</h2><div className="grid"><Select label="Conta gerencial" value={form.managementAccountId} onChange={v=>setForm({...form,managementAccountId:v})} items={catalogs?.managementAccounts||[]}/><Select label="Centro de custo" value={form.costCenterId} onChange={v=>setForm({...form,costCenterId:v})} items={catalogs?.costCenters||[]}/><label className="field"><span>Classificação</span><select value={form.costDirectness} onChange={e=>setForm({...form,costDirectness:e.target.value})}><option value="INDIRECT">Indireto</option><option value="DIRECT">Direto</option></select></label><Select label="Linha de negócio" required={form.costDirectness==='DIRECT'} value={form.businessLineId} onChange={v=>setForm({...form,businessLineId:v})} items={catalogs?.businessLines||[]}/><Select label="Projeto" required={form.costDirectness==='DIRECT'} value={form.projectId} onChange={v=>setForm({...form,projectId:v})} items={catalogs?.projects||[]} disabled={!catalogs?.projects.length} placeholder={catalogs?.projects.length?'Selecione':'Nenhum projeto cadastrado'}/></div><div className="actions"><button className="primary" disabled={!catalogs}>Salvar conta a pagar</button></div></form>
+    <style jsx>{`*{box-sizing:border-box}.wrap{max-width:1100px;margin:0 auto;padding:32px 20px 64px;color:#172033}header{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;margin-bottom:24px}h1{font-size:32px;margin:4px 0}h2{font-size:18px;margin:24px 0 14px}.eyebrow{font-size:12px;text-transform:uppercase;letter-spacing:.12em;font-weight:700;color:#64748b}.muted{color:#64748b}.env,.card{border:1px solid #e2e8f0;border-radius:16px;background:#fff;padding:20px}.env{display:grid;grid-template-columns:1fr 1fr auto;gap:12px;align-items:end;margin-bottom:18px}.env label,.field{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:600}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.full{grid-column:1/-1}input,select,button{min-height:44px;border:1px solid #cbd5e1;border-radius:9px;padding:10px 12px;font:inherit;background:#fff}select:disabled{background:#f1f5f9;color:#64748b}button{cursor:pointer;font-weight:700}.primary{background:#172033;color:white;border-color:#172033}.actions{display:flex;justify-content:flex-end;gap:10px;margin-top:24px}.actions.mini{margin-top:12px}.errorBox,.successBox{padding:12px 14px;border-radius:10px;margin-bottom:14px}.errorBox{background:#fef2f2;color:#991b1b}.successBox{background:#f0fdf4;color:#166534}a{color:#334155;font-weight:700;text-decoration:none}.cpField{position:relative}.results{position:absolute;top:70px;left:0;right:0;z-index:10;background:white;border:1px solid #cbd5e1;border-radius:10px;box-shadow:0 10px 25px rgba(15,23,42,.12);padding:6px;max-height:300px;overflow:auto}.results button{width:100%;text-align:left;border:0;background:white;display:flex;flex-direction:column;align-items:flex-start}.results button:hover{background:#f8fafc}.results small,.field small{color:#64748b;font-weight:400}.createInline{color:#1d4ed8!important;border-top:1px solid #e2e8f0!important;border-radius:0!important}.noResult{padding:12px;color:#64748b}.selected{color:#166534}.quick{padding:16px;border:1px solid #bfdbfe;border-radius:12px;background:#eff6ff}.quickGrid{margin-top:12px}@media(max-width:700px){header{flex-direction:column}.env,.grid{grid-template-columns:1fr}.full{grid-column:auto}}`}</style></main>
 }
