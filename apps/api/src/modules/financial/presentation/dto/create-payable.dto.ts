@@ -1,7 +1,12 @@
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { CostBehavior, CostDirectness, CounterpartyType, Currency, DocumentType, EconomicNature, PayableSourceType, PaymentMethod } from '@aritech/database';
-import { IsArray, IsDateString, IsEnum, IsOptional, IsString, IsUUID, Matches, MinLength, ValidateNested } from 'class-validator';
+import { IsArray, IsDateString, IsEnum, IsIn, IsOptional, IsString, IsUUID, Matches, MinLength, ValidateNested } from 'class-validator';
+
+export const PAYABLE_OBLIGATION_TYPES = [
+  'SUPPLIER_PAYMENT','RENT','TAX','SALARY','SALARY_ADVANCE','VACATION','THIRTEENTH_SALARY',
+  'REIMBURSEMENT','BENEFIT','TERMINATION','PRO_LABORE','OTHER',
+] as const;
 
 class PayableInstallmentInputDto {
   @ApiProperty() @IsDateString() dueDate!: string;
@@ -16,8 +21,8 @@ class FinancialAllocationInputDto {
   @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUUID() contractId?: string;
   @ApiProperty({ example: '1000.0000' }) @IsString() @Matches(/^\d+(\.\d{1,4})?$/) amount!: string;
   @ApiPropertyOptional() @IsOptional() @IsDateString() competenceDate?: string;
-  @ApiProperty({ enum: EconomicNature }) @IsEnum(EconomicNature) economicNature!: EconomicNature;
-  @ApiProperty({ enum: CostBehavior }) @IsEnum(CostBehavior) costBehavior!: CostBehavior;
+  @ApiPropertyOptional({ enum: EconomicNature, description: 'Quando omitido, herda da conta gerencial.' }) @IsOptional() @IsEnum(EconomicNature) economicNature?: EconomicNature;
+  @ApiPropertyOptional({ enum: CostBehavior, description: 'Quando omitido, herda da conta gerencial.' }) @IsOptional() @IsEnum(CostBehavior) costBehavior?: CostBehavior;
   @ApiProperty({ enum: CostDirectness }) @IsEnum(CostDirectness) costDirectness!: CostDirectness;
   @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUUID() dreGroupId?: string;
   @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUUID() cashFlowGroupId?: string;
@@ -31,6 +36,7 @@ export class CreatePayableDto {
   @ApiProperty({ format: 'uuid' }) @IsUUID() legalEntityId!: string;
   @ApiProperty({ enum: CounterpartyType }) @IsEnum(CounterpartyType) counterpartyType!: CounterpartyType;
   @ApiProperty({ format: 'uuid' }) @IsUUID() counterpartyId!: string;
+  @ApiProperty({ enum: PAYABLE_OBLIGATION_TYPES }) @IsIn(PAYABLE_OBLIGATION_TYPES) obligationType!: typeof PAYABLE_OBLIGATION_TYPES[number];
   @ApiProperty() @IsString() @MinLength(3) description!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() documentNumber?: string;
   @ApiPropertyOptional({ enum: DocumentType }) @IsOptional() @IsEnum(DocumentType) documentType?: DocumentType;
