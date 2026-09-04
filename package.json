@@ -1,0 +1,19 @@
+{
+  "name": "aritech-platform",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.15.0",
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "test": "turbo test",
+    "db:validate": "pnpm --filter @aritech/database validate",
+    "db:generate": "pnpm --filter @aritech/database generate",
+    "db:migrate": "pnpm --filter @aritech/database migrate:dev",
+    "db:studio": "pnpm --filter @aritech/database studio"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.6"
+  }
+}

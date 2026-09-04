@@ -1,0 +1,53 @@
+const KCT='aritech_hml_contracts_v1',KPJ='aritech_hml_projects_v1';
+let CT=JSON.parse(localStorage.getItem(KCT)||'[]');
+let PJ=JSON.parse(localStorage.getItem(KPJ)||'[]');
+if(!PJ.length){PJ=['Administrativo / Sem projeto','SE-7702','PCM6','UTC / Boaventura','SANASA / PEAD','Projeto de Homologação'].map((name,i)=>({id:'legacy-'+i,code:i===0?'ADM':'PRJ-'+String(i).padStart(3,'0'),name,contractId:'',businessLine:'',status:'Ativo',legacy:true}));localStorage.setItem(KPJ,JSON.stringify(PJ))}
+const contractForm=document.getElementById('contractForm'),projectForm=document.getElementById('projectForm');
+function saveMasters(){localStorage.setItem(KCT,JSON.stringify(CT));localStorage.setItem(KPJ,JSON.stringify(PJ))}
+function refreshMasterSelectors(){
+  if(projectForm){projectForm.contractId.innerHTML='<option value="">Sem contrato vinculado</option>'+CT.filter(c=>c.status!=='Cancelado').map(c=>'<option value="'+c.id+'">'+esc(c.code)+' · '+esc(c.name)+'</option>').join('');projectForm.businessLine.innerHTML='<option value="">Selecione</option>'+bl.map(x=>'<option>'+esc(x)+'</option>').join('')}
+  if(pf.contract)pf.contract.innerHTML='<option value="">Sem contrato</option>'+CT.filter(c=>c.status!=='Cancelado').map(c=>'<option value="'+c.id+'">'+esc(c.code)+' · '+esc(c.name)+'</option>').join('');
+  if(pf.project){const old=pf.project.value;pf.project.innerHTML='<option value="">Selecione</option>'+PJ.filter(p=>p.status!=='Cancelado').map(p=>'<option value="'+esc(p.name)+'">'+esc(p.code)+' · '+esc(p.name)+'</option>').join('');if(PJ.some(p=>p.name===old))pf.project.value=old}
+}
+function renderMasters(){
+  const cl=document.getElementById('contractList'),pl=document.getElementById('projectList');
+  if(cl)cl.innerHTML=CT.length?'<table class="table"><tr><th>Código</th><th>Contrato</th><th>Cliente</th><th>Período</th><th>Valor</th><th>Status</th></tr>'+CT.map(c=>'<tr><td><b>'+esc(c.code)+'</b></td><td>'+esc(c.name)+'</td><td>'+esc(c.customer)+'</td><td>'+esc(c.start||'—')+' → '+esc(c.end||'—')+'</td><td>'+money(c.value||0)+'</td><td><span class="badge">'+esc(c.status)+'</span></td></tr>').join('')+'</table>':'<div class="muted">Nenhum contrato cadastrado.</div>';
+  if(pl)pl.innerHTML=PJ.length?'<table class="table"><tr><th>Código</th><th>Projeto</th><th>Contrato</th><th>Linha de negócio</th><th>Status</th></tr>'+PJ.map(p=>{const c=CT.find(x=>x.id===p.contractId);return '<tr><td><b>'+esc(p.code)+'</b></td><td>'+esc(p.name)+'</td><td>'+esc(c?c.code+' · '+c.name:'—')+'</td><td>'+esc(p.businessLine||'—')+'</td><td><span class="badge">'+esc(p.status)+'</span></td></tr>'}).join('')+'</table>':'<div class="muted">Nenhum projeto cadastrado.</div>';
+  refreshMasterSelectors();
+}
+if(contractForm)contractForm.onsubmit=e=>{e.preventDefault();const code=contractForm.code.value.trim(),name=contractForm.name.value.trim(),customer=contractForm.customer.value.trim();if(!code||!name||!customer)return alert('Informe código, descrição e cliente do contrato.');if(CT.some(c=>c.code.toLowerCase()===code.toLowerCase()))return alert('Já existe um contrato com esse código.');CT.push({id:crypto.randomUUID(),code,name,customer,start:contractForm.start.value,end:contractForm.end.value,value:moneyNum(contractForm.value.value),status:contractForm.status.value,createdAt:new Date().toISOString()});saveMasters();contractForm.reset();renderMasters();alert('Contrato cadastrado.')};
+if(contractForm)contractForm.value.oninput=e=>e.target.value=moneyMask(e.target.value);
+if(projectForm)projectForm.onsubmit=e=>{e.preventDefault();const code=projectForm.code.value.trim(),name=projectForm.name.value.trim();if(!code||!name)return alert('Informe código e nome do projeto.');if(PJ.some(p=>p.code.toLowerCase()===code.toLowerCase()))return alert('Já existe um projeto com esse código.');PJ.push({id:crypto.randomUUID(),code,name,contractId:projectForm.contractId.value,businessLine:projectForm.businessLine.value,status:projectForm.status.value,createdAt:new Date().toISOString()});saveMasters();projectForm.reset();renderMasters();alert('Projeto cadastrado e disponibilizado nas contas a pagar.')};
+
+// Mantém Salários e Ordenados, mas oferece contas gerenciais separadas para análise de férias e 13º.
+['Férias e 1/3 constitucional','13º salário'].forEach(x=>{if(pf.management&&!Array.from(pf.management.options).some(o=>o.text===x)){const o=document.createElement('option');o.text=o.value=x;pf.management.add(o)}});
+
+// Preserva o comportamento existente da conta a pagar e acrescenta o vínculo com contrato.
+const originalPaySubmit=pf.onsubmit;
+pf.onsubmit=e=>{const before=P.length;originalPaySubmit.call(pf,e);if(P.length>before){const p=P[P.length-1];p.contractId=pf.contract?pf.contract.value:'';p.contract=pf.contract&&pf.contract.selectedIndex>0?pf.contract.options[pf.contract.selectedIndex].text:'';save()}};
+
+function ofxDate(v){const d=String(v||'').replace(/\D/g,'').slice(0,8);return d.length===8?d.slice(0,4)+'-'+d.slice(4,6)+'-'+d.slice(6,8):String(v||'')}
+function daysBetween(a,b){if(!a||!b)return 9999;return Math.abs((new Date(a+'T12:00:00')-new Date(b+'T12:00:00'))/86400000)}
+function exactValue(a,b){return Math.abs(Math.abs(Number(a||0))-Math.abs(Number(b||0)))<0.011}
+function bestReconciliationCandidate(t){
+  const txDate=ofxDate(t.date),txValue=Math.abs(Number(t.amount||0));
+  const payments=PM.filter(p=>p.status!=='RECONCILED'&&exactValue(p.amount,txValue)).map(p=>({kind:'PAYMENT',payment:p,score:daysBetween(txDate,p.date),label:p.beneficiary+' · '+p.description,date:p.date,value:p.amount})).filter(x=>x.score<=30).sort((a,b)=>a.score-b.score);
+  if(payments.length)return payments[0];
+  const installments=[];
+  P.filter(p=>['APPROVED','OPEN','PARTIALLY_SETTLED'].includes(p.status)).forEach(p=>(p.installments||[]).filter(i=>Number(i.open)>0&&exactValue(i.open,txValue)).forEach(i=>installments.push({kind:'INSTALLMENT',payable:p,installment:i,score:daysBetween(txDate,i.due),label:p.beneficiary+' · '+p.description+' · Parcela '+i.sequence,date:i.due,value:i.open})));
+  return installments.filter(x=>x.score<=45).sort((a,b)=>a.score-b.score)[0]||null;
+}
+function settleFromOfx(t,p,i){const principal=Math.abs(Number(t.amount||0));if(principal<=0||principal>Number(i.open)+0.011)return alert('O valor bancário não é compatível com o saldo da parcela.');i.open=+(Number(i.open)-principal).toFixed(2);i.status=i.open===0?'SETTLED':'PARTIALLY_SETTLED';const its=p.installments||[],all=its.length&&its.every(x=>Number(x.open)===0),any=its.some(x=>Number(x.open)<Number(x.original));p.status=all?'SETTLED':any?'PARTIALLY_SETTLED':'OPEN';const payment={id:crypto.randomUUID(),payableId:p.id,installmentId:i.id,beneficiary:p.beneficiary,description:p.description,date:ofxDate(t.date),account:'Conciliação OFX',method:'OFX',principal,interest:0,penalty:0,discount:0,amount:principal,reference:t.memo||t.id,status:'RECONCILED',bankTransactionId:t.id,createdFromReconciliation:true};PM.push(payment);t.status='RECONCILED';t.paymentId=payment.id;t.reconciledAt=new Date().toISOString();save();return payment}
+function confirmSmartRec(txid){const t=R.find(x=>x.id===txid);if(!t||t.status==='RECONCILED')return;const c=bestReconciliationCandidate(t);if(!c)return alert('Nenhuma correspondência exata encontrada para esta movimentação.');if(c.kind==='PAYMENT'){c.payment.status='RECONCILED';c.payment.bankTransactionId=t.id;t.status='RECONCILED';t.paymentId=c.payment.id;t.reconciledAt=new Date().toISOString();save()}else settleFromOfx(t,c.payable,c.installment);render()}
+window.confirmSmartRec=confirmSmartRec;
+
+document.getElementById('importOfx').onclick=async()=>{let file=document.getElementById('ofxFile').files[0];if(!file)return alert('Selecione um arquivo OFX.');let text=await file.text(),blocks=text.split(/<STMTTRN>/i).slice(1),tx=[];for(let b of blocks){let get=t=>((b.match(new RegExp('<'+t+'>([^<\\r\\n]+)','i'))||[])[1]||'').trim(),amt=parseFloat(get('TRNAMT').replace(',','.'));if(!isNaN(amt)){const fit=get('FITID')||crypto.randomUUID();tx.push({id:fit,date:get('DTPOSTED').slice(0,8),amount:amt,memo:get('MEMO')||get('NAME')||'',status:'UNRECONCILED',importedAt:new Date().toISOString()})}}
+  let added=0;tx.forEach(n=>{const old=R.find(x=>x.id===n.id);if(old){old.date=n.date||old.date;old.amount=n.amount;old.memo=n.memo||old.memo}else{R.push(n);added++}});save();render();alert(tx.length+' movimentações lidas; '+added+' novas incorporadas ao histórico.')};
+
+function renderSmartRec(){const el=document.getElementById('recList');if(!el)return;el.innerHTML=R.length?'<table class="table"><tr><th>Data</th><th>Descrição</th><th>Valor</th><th>Status / sugestão</th></tr>'+R.slice().sort((a,b)=>String(b.date).localeCompare(String(a.date))).map(t=>{if(t.status==='RECONCILED'){const p=PM.find(x=>x.id===t.paymentId);return '<tr><td>'+esc(ofxDate(t.date))+'</td><td>'+esc(t.memo)+'</td><td>'+money(t.amount)+'</td><td><span class="valid">Conciliado</span>'+ (p?'<div class="muted">'+esc(p.beneficiary)+' · '+esc(p.description)+'</div>':'')+'</td></tr>'}const c=bestReconciliationCandidate(t);let action='<span class="muted">Sem sugestão exata</span>';if(c){const source=c.kind==='PAYMENT'?'Pagamento registrado':'Parcela aprovada/em aberto';action='<button class="btn success" onclick="confirmSmartRec(\''+t.id+'\')">Confirmar '+esc(c.label)+' · '+money(c.value)+'</button><div class="muted">'+source+' · data '+esc(c.date||'—')+'</div>'}return '<tr><td>'+esc(ofxDate(t.date))+'</td><td>'+esc(t.memo)+'</td><td>'+money(t.amount)+'</td><td>'+action+'</td></tr>'}).join('')+'</table>':'<div class="muted">Nenhum OFX importado.</div>'}
+
+const originalRender=render;
+render=function(){originalRender();renderMasters();renderSmartRec()};
+const navMap={sup:['Fornecedores','Cadastre, edite e gerencie fornecedores.'],emp:['Colaboradores','Cadastro separado de pessoas vinculadas à Aritech.'],projects:['Contratos e Projetos','Cadastre contratos e projetos que alimentam a classificação financeira.'],pay:['Contas a pagar','Registre e classifique obrigações financeiras.'],app:['Aprovações','Aprove ou reprove os lançamentos pendentes.'],payments:['Pagamentos','Liquide parcelas aprovadas total ou parcialmente.'],rec:['Conciliação','Importe OFX, preserve o histórico e confirme correspondências bancárias.']};
+document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.nav button').forEach(x=>x.classList.remove('active'));b.classList.add('active');document.querySelectorAll('.section').forEach(x=>x.classList.remove('active'));document.getElementById(b.dataset.s).classList.add('active');const m=navMap[b.dataset.s];document.getElementById('title').textContent=m[0];document.getElementById('subtitle').textContent=m[1]});
+render();

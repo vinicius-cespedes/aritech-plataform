@@ -1,0 +1,91 @@
+name: Project Catalog Patch
+
+on:
+  push:
+    branches:
+      - agent/bootstrap-platform
+    paths:
+      - '.github/workflows/project-catalog-patch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/bootstrap-platform
+      - name: Patch project domain and catalogs
+        shell: python
+        run: |
+          from pathlib import Path
+
+          schema = Path('packages/database/prisma/schema.prisma')
+          s = schema.read_text()
+
+          old = '''  parent      BusinessLine?  @relation("BusinessLineHierarchy", fields: [parentId], references: [id], onDelete: Restrict)\n  children    BusinessLine[] @relation("BusinessLineHierarchy")\n  allocations FinancialClassificationAllocation[]\n'''
+          new = '''  parent      BusinessLine?  @relation("BusinessLineHierarchy", fields: [parentId], references: [id], onDelete: Restrict)\n  children    BusinessLine[] @relation("BusinessLineHierarchy")\n  allocations FinancialClassificationAllocation[]\n  projects    Project[]\n'''
+          if old not in s:
+              raise SystemExit('BusinessLine target not found')
+          s = s.replace(old, new, 1)
+
+          marker = '''model FinancialPeriod {\n'''
+          project_model = '''model Project {\n  id             String       @id @default(uuid()) @db.Uuid\n  legalEntityId  String       @db.Uuid @map("legal_entity_id")\n  code           String       @db.VarChar(60)\n  name           String       @db.VarChar(200)\n  description    String?      @db.Text\n  businessLineId String?      @db.Uuid @map("business_line_id")\n  status         RecordStatus @default(ACTIVE)\n  startDate      DateTime?    @db.Date @map("start_date")\n  endDate        DateTime?    @db.Date @map("end_date")\n  createdAt      DateTime     @default(now()) @db.Timestamptz(6) @map("created_at")\n  updatedAt      DateTime     @updatedAt @db.Timestamptz(6) @map("updated_at")\n\n  businessLine BusinessLine? @relation(fields: [businessLineId], references: [id], onDelete: SetNull)\n  allocations  FinancialClassificationAllocation[]\n\n  @@unique([legalEntityId, code])\n  @@index([legalEntityId, status])\n  @@index([businessLineId])\n  @@map("projects")\n}\n\n'''
+          if marker not in s:
+              raise SystemExit('FinancialPeriod marker not found')
+          s = s.replace(marker, project_model + marker, 1)
+
+          old_rel = '''  costCenter        CostCenter?       @relation(fields: [costCenterId], references: [id], onDelete: Restrict)\n  businessLine      BusinessLine?     @relation(fields: [businessLineId], references: [id], onDelete: Restrict)\n'''
+          new_rel = '''  costCenter        CostCenter?       @relation(fields: [costCenterId], references: [id], onDelete: Restrict)\n  businessLine      BusinessLine?     @relation(fields: [businessLineId], references: [id], onDelete: Restrict)\n  project           Project?          @relation(fields: [projectId], references: [id], onDelete: Restrict)\n'''
+          if old_rel not in s:
+              raise SystemExit('Allocation relation target not found')
+          s = s.replace(old_rel, new_rel, 1)
+          schema.write_text(s)
+
+          Path('packages/database/prisma/migrations/20260822152500_projects').mkdir(parents=True, exist_ok=True)
+          Path('packages/database/prisma/migrations/20260822152500_projects/migration.sql').write_text('''CREATE TABLE "projects" (\n    "id" UUID NOT NULL,\n    "legal_entity_id" UUID NOT NULL,\n    "code" VARCHAR(60) NOT NULL,\n    "name" VARCHAR(200) NOT NULL,\n    "description" TEXT,\n    "business_line_id" UUID,\n    "status" "RecordStatus" NOT NULL DEFAULT 'ACTIVE',\n    "start_date" DATE,\n    "end_date" DATE,\n    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,\n    "updated_at" TIMESTAMPTZ(6) NOT NULL,\n    CONSTRAINT "projects_pkey" PRIMARY KEY ("id")\n);\n\nCREATE UNIQUE INDEX "projects_legal_entity_id_code_key" ON "projects"("legal_entity_id", "code");\nCREATE INDEX "projects_legal_entity_id_status_idx" ON "projects"("legal_entity_id", "status");\nCREATE INDEX "projects_business_line_id_idx" ON "projects"("business_line_id");\n\nALTER TABLE "projects" ADD CONSTRAINT "projects_business_line_id_fkey" FOREIGN KEY ("business_line_id") REFERENCES "business_lines"("id") ON DELETE SET NULL ON UPDATE CASCADE;\nALTER TABLE "financial_classification_allocations" ADD CONSTRAINT "financial_classification_allocations_project_id_fkey" FOREIGN KEY ("project_id") REFERENCES "projects"("id") ON DELETE RESTRICT ON UPDATE CASCADE;\n''')
+
+          Path('apps/api/src/modules/financial/presentation/dto/create-project.dto.ts').write_text('''import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';\nimport { IsDateString, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';\n\nexport class CreateProjectDto {\n  @ApiProperty({ format: 'uuid' }) @IsUUID() legalEntityId!: string;\n  @ApiProperty() @IsString() @MaxLength(60) code!: string;\n  @ApiProperty() @IsString() @MaxLength(200) name!: string;\n  @ApiPropertyOptional() @IsOptional() @IsString() description?: string;\n  @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUUID() businessLineId?: string;\n  @ApiPropertyOptional() @IsOptional() @IsDateString() startDate?: string;\n  @ApiPropertyOptional() @IsOptional() @IsDateString() endDate?: string;\n}\n''')
+
+          Path('apps/api/src/modules/financial/application/projects.service.ts').write_text('''import { Injectable } from '@nestjs/common';\nimport { prisma } from '@aritech/database';\nimport { CreateProjectDto } from '../presentation/dto/create-project.dto';\n\n@Injectable()\nexport class ProjectsService {\n  list(legalEntityId: string) {\n    return prisma.project.findMany({\n      where: { legalEntityId, status: 'ACTIVE' },\n      include: { businessLine: true },\n      orderBy: [{ code: 'asc' }, { name: 'asc' }],\n    });\n  }\n\n  create(input: CreateProjectDto) {\n    return prisma.project.create({\n      data: {\n        legalEntityId: input.legalEntityId,\n        code: input.code,\n        name: input.name,\n        description: input.description,\n        businessLineId: input.businessLineId,\n        startDate: input.startDate ? new Date(input.startDate) : undefined,\n        endDate: input.endDate ? new Date(input.endDate) : undefined,\n      },\n      include: { businessLine: true },\n    });\n  }\n}\n''')
+
+          Path('apps/api/src/modules/financial/presentation/projects.controller.ts').write_text('''import { Body, Controller, Get, Post, Query } from '@nestjs/common';\nimport { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';\nimport { ProjectsService } from '../application/projects.service';\nimport { CreateProjectDto } from './dto/create-project.dto';\n\n@ApiTags('projects')\n@Controller('financial/projects')\nexport class ProjectsController {\n  constructor(private readonly service: ProjectsService) {}\n\n  @Get()\n  @ApiOperation({ summary: 'Lista projetos ativos da entidade legal' })\n  @ApiQuery({ name: 'legalEntityId', format: 'uuid' })\n  list(@Query('legalEntityId') legalEntityId: string) {\n    return this.service.list(legalEntityId);\n  }\n\n  @Post()\n  @ApiOperation({ summary: 'Cria um projeto' })\n  create(@Body() input: CreateProjectDto) {\n    return this.service.create(input);\n  }\n}\n''')
+
+          catalogs = Path('apps/api/src/modules/financial/application/financial-catalogs.service.ts')
+          c = catalogs.read_text()
+          c = c.replace("prisma.costCenter.findMany({ where: { legalEntityId, status: 'ACTIVE' }, orderBy: { name: 'asc' } })", "prisma.costCenter.findMany({ where: { status: 'ACTIVE' }, orderBy: { name: 'asc' } })")
+          catalogs.write_text(c)
+
+          module = Path('apps/api/src/modules/financial/financial.module.ts')
+          m = module.read_text()
+          import_anchor = "import { FinancialCatalogsService } from './application/financial-catalogs.service';\n"
+          if import_anchor not in m:
+              raise SystemExit('FinancialCatalogs import anchor not found')
+          m = m.replace(import_anchor, import_anchor + "import { ProjectsController } from './presentation/projects.controller';\nimport { ProjectsService } from './application/projects.service';\n", 1)
+          m = m.replace('    FinancialCatalogsController,\n', '    FinancialCatalogsController,\n    ProjectsController,\n', 1)
+          m = m.replace('    FinancialCatalogsService,\n', '    FinancialCatalogsService,\n    ProjectsService,\n', 1)
+          module.write_text(m)
+
+          page = Path('apps/web/app/page.tsx')
+          p = page.read_text()
+          target = '<Header title="Contas a pagar" subtitle="Registre competência, vencimento, parcelamento e rateio gerencial desde a origem."/>'
+          replacement = '<Header title="Contas a pagar" subtitle="Registre competência, vencimento, parcelamento e rateio gerencial desde a origem." actions={<a className="btn primary" href="/payables/new">Nova conta com seletores</a>}/>'
+          if target in p:
+              p = p.replace(target, replacement, 1)
+          page.write_text(p)
+
+      - name: Validate generated changes
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+          pnpm --filter @aritech/database validate
+          pnpm --filter @aritech/database generate
+      - name: Commit project domain
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages/database/prisma/schema.prisma packages/database/prisma/migrations/20260822152500_projects apps/api/src/modules/financial apps/web/app/page.tsx
+          git commit -m "feat(financial): implement projects and catalog selectors"
+          git push origin HEAD:agent/bootstrap-platform

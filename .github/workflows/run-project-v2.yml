@@ -1,0 +1,41 @@
+name: Run Project Model Patch
+
+on:
+  push:
+    branches:
+      - agent/bootstrap-platform
+    paths:
+      - '.trigger-project-v2'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/bootstrap-platform
+      - name: Run project patch from V2 workflow
+        shell: python
+        run: |
+          from pathlib import Path
+          text = Path('.github/workflows/project-catalog-patch-v2.yml').read_text().splitlines()
+          start = next(i for i,l in enumerate(text) if l.strip() == 'run: |' and i > 0 and 'shell: python' in text[i-1]) + 1
+          end = next(i for i,l in enumerate(text[start:], start) if l.startswith('      - name: Validate Prisma'))
+          code = '\n'.join((l[10:] if l.startswith('          ') else l) for l in text[start:end])
+          exec(compile(code, 'project-patch', 'exec'))
+      - name: Validate Prisma
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+          pnpm --filter @aritech/database validate
+          pnpm --filter @aritech/database generate
+      - name: Commit project model
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages/database/prisma apps/api/src/modules/financial apps/web/app/page.tsx
+          git commit -m "feat(financial): implement projects and catalog selectors"
+          git push origin HEAD:agent/bootstrap-platform

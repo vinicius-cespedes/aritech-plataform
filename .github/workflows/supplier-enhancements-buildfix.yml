@@ -1,0 +1,82 @@
+name: Supplier Enhancements Build Fix
+
+on:
+  push:
+    branches:
+      - agent/bootstrap-platform
+    paths:
+      - '.supplier-enhancements-buildfix-trigger'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: aritech
+          POSTGRES_PASSWORD: aritech
+          POSTGRES_DB: aritech
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U aritech -d aritech"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://aritech:aritech@localhost:5432/aritech?schema=public
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/bootstrap-platform
+      - name: Apply supplier patches and normalize generated TypeScript
+        shell: python
+        run: |
+          from pathlib import Path
+          source = Path('.github/workflows/supplier-enhancements-final.yml').read_text()
+          def extract(step_name, next_step_name):
+              start = source.index(f'      - name: {step_name}')
+              start = source.index('        run: |\n', start) + len('        run: |\n')
+              end = source.index(f'      - name: {next_step_name}', start)
+              lines = source[start:end].splitlines()
+              code = '\n'.join((line[10:] if line.startswith('          ') else '') for line in lines)
+              compile(code, f'<{step_name}>', 'exec')
+              exec(code, {})
+          extract('Patch supplier data model and API','Patch supplier UI')
+          extract('Patch supplier UI','Validate and build')
+
+          page = Path('apps/web/app/page.tsx')
+          p = page.read_text()
+          # The generator source intentionally stores escaped TypeScript; normalize only
+          # the two generated supplier regions before compilation.
+          helper_start = p.index('\\nconst SUPPLIER_INDUSTRIES=')
+          helper_end = p.index('\nexport default function Home', helper_start)
+          helper = p[helper_start:helper_end].replace('\\n','\n').replace('\\\\','\\')
+          p = p[:helper_start] + helper + p[helper_end:]
+
+          supplier_start = p.index('function Suppliers(')
+          supplier_end = p.index('\nfunction Payables(', supplier_start)
+          supplier = p[supplier_start:supplier_end].replace('\\n','\n').replace('\\\\','\\')
+          p = p[:supplier_start] + supplier + p[supplier_end:]
+          page.write_text(p)
+      - name: Install dependencies
+        run: |
+          corepack enable
+          pnpm install --no-frozen-lockfile
+      - name: Validate schema and migrations
+        run: |
+          pnpm --filter @aritech/database validate
+          pnpm --filter @aritech/database generate
+          pnpm --filter @aritech/database exec prisma migrate deploy
+      - name: Build workspace
+        run: pnpm build
+      - name: Commit implementation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages/database/prisma apps/api/src/modules/financial apps/web/app/page.tsx
+          git commit -m "feat(financial): enhance supplier registration"
+          git push origin HEAD:agent/bootstrap-platform

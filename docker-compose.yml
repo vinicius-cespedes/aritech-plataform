@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: aritech
+      POSTGRES_PASSWORD: aritech
+      POSTGRES_DB: aritech
+    ports:
+      - "5432:5432"
+    volumes:
+      - aritech_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aritech -d aritech"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  aritech_postgres:
