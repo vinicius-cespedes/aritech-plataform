@@ -1,4 +1,4 @@
-// Camada final de conciliação: elimina o caminho antigo por parcela e usa sempre o saldo total da Conta a Pagar.
+// Camada final da conciliação: mantém conciliação automática e manual e usa sempre o saldo total da Conta a Pagar.
 function bestReconciliationCandidateV7(t){
   const txDate=ofxDate(t.date),txValue=Math.abs(Number(t.amount||0));
   if(Number(t.amount||0)>0){
@@ -30,7 +30,6 @@ confirmSmartRec=function(txid){
 };
 window.confirmSmartRec=confirmSmartRec;
 
-// Garante que qualquer seleção legada de parcela seja convertida para a Conta a Pagar correspondente.
 const manualReconcileV6=manualReconcile;
 manualReconcile=function(txid,value){
   const [kind,id]=String(value||'').split(':');
@@ -42,4 +41,24 @@ manualReconcile=function(txid,value){
   return manualReconcileV6(txid,value);
 };
 window.manualReconcile=manualReconcile;
+
+// Renderização final e explícita: sempre preserva os controles manuais.
+renderSmartRec=function(){
+  const el=document.getElementById('recList');
+  if(!el)return;
+  el.innerHTML=R.length?'<table class="table"><tr><th>Data</th><th>Descrição</th><th>Valor</th><th>Conciliação</th></tr>'+R.slice().sort((a,b)=>String(b.date).localeCompare(String(a.date))).map(t=>{
+    if(t.status==='RECONCILED'){
+      const p=PM.find(x=>x.id===t.paymentId),r=AR.find(x=>x.id===t.receivableId),payable=P.find(x=>x.id===t.payableId);
+      const ref=p?(p.beneficiary+' · '+p.description):payable?(payable.beneficiary+' · '+payable.description):r?((r.customerName||'Cliente')+' · '+r.description):'';
+      return '<tr><td>'+esc(ofxDate(t.date))+'</td><td>'+esc(t.memo)+'</td><td>'+money(t.amount)+'</td><td><span class="valid">Conciliado</span>'+(ref?'<div class="muted">'+esc(ref)+'</div>':'')+'</td></tr>';
+    }
+    const c=bestReconciliationCandidate(t),opts=manualOptionsForTx(t);
+    const sel='<select id="manual-'+esc(t.id)+'"><option value="">Selecionar lançamento...</option>'+opts.map(o=>'<option value="'+o.kind+':'+o.id+'">'+esc(o.label)+'</option>').join('')+'</select>';
+    let auto='';
+    if(c){const source=c.kind==='PAYMENT'?'Pagamento registrado':c.kind==='RECEIVABLE'?'Conta a receber':'Conta a pagar';auto='<button class="btn success" onclick="confirmSmartRec(\''+t.id+'\')">Confirmar sugestão</button><div class="muted">'+esc(c.label)+' · '+money(c.value)+' · '+source+'</div>'}
+    else auto='<span class="muted">Sem match automático</span>';
+    return '<tr><td>'+esc(ofxDate(t.date))+'</td><td>'+esc(t.memo)+'</td><td>'+money(t.amount)+'</td><td>'+auto+'<div style="margin-top:10px" class="rowActions">'+sel+'<button class="btn" onclick="manualReconcile(\''+t.id+'\',document.getElementById(\'manual-'+t.id+'\').value)">Vincular manualmente</button><button class="btn primary" onclick="createFromOfx(\''+t.id+'\')">Cadastrar movimentação</button></div></td></tr>';
+  }).join('')+'</table>':'<div class="muted">Nenhum OFX importado.</div>';
+};
+
 render();
