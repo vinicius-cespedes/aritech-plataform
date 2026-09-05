@@ -32,6 +32,32 @@ const checks = [
     file: 'homologation/financial-baseline-v1/index.html',
     tokens: ['+ Novo beneficiário', 'Criar e selecionar', 'Fornecedores', 'Colaboradores', 'Contas a pagar', 'Aprovações', 'Pagamentos', 'Conciliação'],
   },
+  {
+    file: 'homologation/financial-baseline-v1/app6.js',
+    tokens: ['Vincular manualmente', 'Cadastrar movimentação', 'saldo total'],
+  },
+  {
+    file: 'homologation/financial-baseline-v1/app7.js',
+    tokens: ['bestReconciliationCandidateV7', 'allocateOfxToPayable', 'manualReconcile'],
+  },
+];
+
+const forbidden = [
+  {
+    file: 'homologation/financial-baseline-v1/app5.js',
+    tokens: [
+      '823ecd4fbbe373f1f0670186e600e98ff975d0c2',
+      'O valor do OFX é maior que o saldo da parcela selecionada.',
+    ],
+  },
+  {
+    file: 'homologation/financial-baseline-v1/app6.js',
+    tokens: ['O valor do OFX é maior que o saldo da parcela selecionada.'],
+  },
+  {
+    file: 'homologation/financial-baseline-v1/app7.js',
+    tokens: ['O valor do OFX é maior que o saldo da parcela selecionada.'],
+  },
 ];
 
 let failed = false;
@@ -45,6 +71,17 @@ for (const check of checks) {
   for (const token of check.tokens) {
     if (!content.includes(token)) {
       console.error(`REGRESSION: ${check.file} perdeu requisito: ${token}`);
+      failed = true;
+    }
+  }
+}
+
+for (const check of forbidden) {
+  if (!fs.existsSync(check.file)) continue;
+  const content = fs.readFileSync(check.file, 'utf8');
+  for (const token of check.tokens) {
+    if (content.includes(token)) {
+      console.error(`REGRESSION: ${check.file} contém rotina legada proibida: ${token}`);
       failed = true;
     }
   }
