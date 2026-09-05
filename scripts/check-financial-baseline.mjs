@@ -33,31 +33,25 @@ const checks = [
     tokens: ['+ Novo beneficiário', 'Criar e selecionar', 'Fornecedores', 'Colaboradores', 'Contas a pagar', 'Aprovações', 'Pagamentos', 'Conciliação'],
   },
   {
-    file: 'homologation/financial-baseline-v1/app6.js',
-    tokens: ['Vincular manualmente', 'Cadastrar movimentação', 'saldo total'],
-  },
-  {
-    file: 'homologation/financial-baseline-v1/app7.js',
-    tokens: ['bestReconciliationCandidateV7', 'allocateOfxToPayable', 'manualReconcile'],
+    file: 'homologation/financial-baseline-v1/app9.js',
+    tokens: [
+      'Selecionar pagamento/recebimento...',
+      'Vincular manualmente',
+      'Classificar operação',
+      'Registrar recebimento',
+      'Registrar e conciliar',
+      "cashEventType='PAYMENT'",
+      "cashEventType='RECEIPT'",
+      '__ARITECH_RECONCILIATION_V9__',
+    ],
   },
 ];
 
 const forbidden = [
-  {
-    file: 'homologation/financial-baseline-v1/app5.js',
-    tokens: [
-      '823ecd4fbbe373f1f0670186e600e98ff975d0c2',
-      'O valor do OFX é maior que o saldo da parcela selecionada.',
-    ],
-  },
-  {
-    file: 'homologation/financial-baseline-v1/app6.js',
-    tokens: ['O valor do OFX é maior que o saldo da parcela selecionada.'],
-  },
-  {
-    file: 'homologation/financial-baseline-v1/app7.js',
-    tokens: ['O valor do OFX é maior que o saldo da parcela selecionada.'],
-  },
+  ['homologation/financial-baseline-v1/app5.js', '823ecd4fbbe373f1f0670186e600e98ff975d0c2'],
+  ['homologation/financial-baseline-v1/app9.js', 'saldo da parcela selecionada'],
+  ['homologation/financial-baseline-v1/app9.js', "kind==='PAYABLE'"],
+  ['homologation/financial-baseline-v1/app9.js', "kind==='RECEIVABLE'"],
 ];
 
 let failed = false;
@@ -75,15 +69,12 @@ for (const check of checks) {
     }
   }
 }
-
-for (const check of forbidden) {
-  if (!fs.existsSync(check.file)) continue;
-  const content = fs.readFileSync(check.file, 'utf8');
-  for (const token of check.tokens) {
-    if (content.includes(token)) {
-      console.error(`REGRESSION: ${check.file} contém rotina legada proibida: ${token}`);
-      failed = true;
-    }
+for (const [file, token] of forbidden) {
+  if (!fs.existsSync(file)) continue;
+  const content = fs.readFileSync(file, 'utf8');
+  if (content.includes(token)) {
+    console.error(`REGRESSION: ${file} contém rotina legada proibida: ${token}`);
+    failed = true;
   }
 }
 
