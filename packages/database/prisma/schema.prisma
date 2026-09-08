@@ -1,0 +1,1176 @@
+// Aritech Digital — Schema do núcleo financeiro (MVP)
+//
+// Este schema implementa as entidades prioritárias descritas em
+// docs/domain/FINANCIAL_MODEL.md §47.1 ("Obrigatórias"), respeitando:
+// - ADR-003 (PostgreSQL/Prisma): UUID, Decimal exato, integridade referencial no banco.
+// - ADR-007 (Amounts & Rounding): todo valor monetário é Decimal(19,4); percentuais Decimal(9,6).
+// - ADR-008 (Period Closing): FinancialPeriod com OPEN/CLOSING/CLOSED/REOPENED + histórico de fechamentos.
+// - ADR-009 (Bank Reconciliation): BankTransaction separado de Payment/Receipt, ReconciliationMatch N:N.
+//
+// Simplificações deliberadas desta primeira iteração (ver plano de implementação):
+// - Sem multimoeda/câmbio real (enum Currency existe, mas o MVP opera só em BRL).
+// - Sem multi-empresa real: LegalEntity existe só para FinancialAccount/FinancialPeriod.
+// - Campos "*ById" (autor/responsável) são UUID simples, sem FK para User, exceto
+//   AuditEvent.actorUserId — o ator "de verdade" auditável. Isso evita dezenas de
+//   relações nomeadas em User só para metadado de autoria; a identidade completa do
+//   ator de cada operação crítica já fica registrada em AuditEvent.
+// - Contratos/Projetos/Compras existem só como stubs (Project, Contract) referenciados
+//   pelo financeiro — não são módulos completos nesta iteração.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================================
+// Identidade e Acesso (mínimo — ADR-004)
+// =============================================================================
+
+model User {
+  id                 String   @id @default(uuid())
+  email              String   @unique
+  passwordHash       String
+  name               String
+  isActive           Boolean  @default(true)
+  mustChangePassword Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  roles         UserRole[]
+  refreshTokens RefreshToken[]
+  auditEvents   AuditEvent[]   @relation("AuditActorUser")
+
+  @@map("users")
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users       UserRole[]
+  permissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String  @id @default(uuid())
+  key         String  @unique
+  description String?
+
+  roles RolePermission[]
+
+  @@map("permissions")
+}
+
+model UserRole {
+  userId String
+  roleId String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model RefreshToken {
+  id                String    @id @default(uuid())
+  userId            String
+  tokenHash         String    @unique
+  createdAt         DateTime  @default(now())
+  expiresAt         DateTime
+  revokedAt         DateTime?
+  replacedByTokenId String?
+  createdByIp       String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+// =============================================================================
+// Auditoria centralizada (ADR-006)
+// =============================================================================
+
+enum ActorType {
+  USER
+  ADMIN
+  SERVICE_ACCOUNT
+  INTEGRATION
+  SCHEDULED_JOB
+  SYSTEM
+  MIGRATION
+}
+
+enum AuditResult {
+  SUCCESS
+  FAILURE
+  DENIED
+  PARTIAL
+  CANCELLED
+}
+
+model AuditEvent {
+  id             String      @id @default(uuid())
+  occurredAt     DateTime    @default(now())
+  actorType      ActorType
+  actorUserId    String?
+  actorLabel     String?
+  sessionId      String?
+  requestId      String?
+  module         String
+  action         String
+  entityType     String
+  entityId       String?
+  companyId      String?
+  projectId      String?
+  source         String
+  result         AuditResult
+  reason         String?
+  previousValues Json?
+  newValues      Json?
+  metadata       Json?
+  ipAddress      String?
+  userAgent      String?
+
+  actorUser User? @relation("AuditActorUser", fields: [actorUserId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([module, action])
+  @@index([occurredAt])
+  @@map("audit_events")
+}
+
+// =============================================================================
+// Organização e Cadastros (mínimo)
+// =============================================================================
+
+model LegalEntity {
+  id        String   @id @default(uuid())
+  name      String
+  tradeName String?
+  taxId     String?  @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  financialAccounts FinancialAccount[]
+  financialPeriods  FinancialPeriod[]
+
+  @@map("legal_entities")
+}
+
+model Customer {
+  id        String   @id @default(uuid())
+  name      String
+  tradeName String?
+  taxId     String?
+  email     String?
+  phone     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  contracts   Contract[]
+  receivables Receivable[]
+
+  @@index([taxId])
+  @@map("customers")
+}
+
+model Supplier {
+  id                     String   @id @default(uuid())
+  name                   String
+  tradeName              String?
+  taxId                  String?
+  stateRegistration      String?
+  municipalRegistration  String?
+  website                String?
+  businessArea           String?
+  addressZip             String?
+  addressStreet          String?
+  addressNumber          String?
+  addressComplement      String?
+  addressDistrict        String?
+  addressCity            String?
+  addressState           String?
+  addressCountry         String?  @default("BR")
+  contactName            String?
+  contactEmail           String?
+  contactPhoneDdi        String?
+  contactPhone           String?
+  notes                  String?
+  isActive               Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  payables Payable[]
+
+  @@index([taxId])
+  @@map("suppliers")
+}
+
+model Employee {
+  id             String   @id @default(uuid())
+  name           String
+  taxId          String?
+  employmentType String?
+  role           String?
+  costCenterId   String?
+  admissionDate  DateTime?
+  pixKey         String?
+  bankName       String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  costCenter CostCenter? @relation(fields: [costCenterId], references: [id])
+  payables   Payable[]
+
+  @@map("employees")
+}
+
+model Project {
+  id        String        @id @default(uuid())
+  code      String        @unique
+  name      String
+  contractId String?
+  status    ProjectStatus @default(ACTIVE)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  contract    Contract?    @relation(fields: [contractId], references: [id])
+  payables    Payable[]
+  receivables Receivable[]
+
+  @@map("projects")
+}
+
+enum ProjectStatus {
+  ACTIVE
+  SUSPENDED
+  CLOSED
+}
+
+model Contract {
+  id          String         @id @default(uuid())
+  code        String         @unique
+  customerId  String
+  description String?
+  startDate   DateTime?
+  endDate     DateTime?
+  amount      Decimal?       @db.Decimal(19, 4)
+  status      ContractStatus @default(ACTIVE)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  customer    Customer     @relation(fields: [customerId], references: [id])
+  projects    Project[]
+  payables    Payable[]
+  receivables Receivable[]
+
+  @@map("contracts")
+}
+
+enum ContractStatus {
+  DRAFT
+  ACTIVE
+  SUSPENDED
+  CLOSED
+}
+
+// =============================================================================
+// Financeiro — cadastros de suporte (ADR-003 §24 — índices por padrão de acesso)
+// =============================================================================
+
+enum Currency {
+  BRL
+  USD
+  EUR
+}
+
+enum FinancialAccountType {
+  CHECKING
+  SAVINGS
+  CASH
+  INVESTMENT
+  PAYMENT
+  DIGITAL_WALLET
+  INTERNATIONAL
+  OTHER
+}
+
+enum FinancialAccountStatus {
+  ACTIVE
+  INACTIVE
+  CLOSED
+}
+
+model FinancialAccount {
+  id                    String                  @id @default(uuid())
+  legalEntityId         String?
+  name                  String
+  type                  FinancialAccountType
+  institutionName       String?
+  bankCode              String?
+  branch                String?
+  accountNumber         String?
+  accountDigit          String?
+  currency              Currency                @default(BRL)
+  openingBalance        Decimal                 @default(0) @db.Decimal(19, 4)
+  openingBalanceDate    DateTime?
+  status                FinancialAccountStatus  @default(ACTIVE)
+  allowsReconciliation  Boolean                 @default(true)
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+
+  legalEntity      LegalEntity?           @relation(fields: [legalEntityId], references: [id])
+  payments         Payment[]
+  receipts         Receipt[]
+  bankTransactions BankTransaction[]
+  statementImports BankStatementImport[]
+  reconciliations  BankReconciliation[]
+  transfersOut     FinancialTransfer[]    @relation("TransferSource")
+  transfersIn      FinancialTransfer[]    @relation("TransferDestination")
+
+  @@map("financial_accounts")
+}
+
+enum ManagementAccountNature {
+  DEBIT
+  CREDIT
+  NEUTRAL
+}
+
+enum ManagementAccountClassification {
+  REVENUE
+  TAX_DEDUCTION
+  DIRECT_COST
+  INDIRECT_COST
+  OPERATING_EXPENSE
+  FINANCIAL_INCOME
+  FINANCIAL_EXPENSE
+  INVESTMENT
+  FINANCING
+  EQUITY
+  TRANSFER
+  OTHER
+}
+
+enum ManagementAccountStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model ManagementAccount {
+  id             String                           @id @default(uuid())
+  code           String                           @unique
+  name           String
+  parentId       String?
+  nature         ManagementAccountNature
+  classification ManagementAccountClassification
+  dreGroup       String?
+  cashFlowGroup  String?
+  allowsPosting  Boolean                          @default(true)
+  status         ManagementAccountStatus          @default(ACTIVE)
+  validFrom      DateTime?
+  validUntil     DateTime?
+  createdAt      DateTime                         @default(now())
+  updatedAt      DateTime                         @updatedAt
+
+  parent      ManagementAccount?  @relation("ManagementAccountTree", fields: [parentId], references: [id])
+  children    ManagementAccount[] @relation("ManagementAccountTree")
+  payables    Payable[]
+  receivables Receivable[]
+
+  @@map("management_accounts")
+}
+
+enum CostCenterStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model CostCenter {
+  id        String            @id @default(uuid())
+  code      String            @unique
+  name      String
+  parentId  String?
+  status    CostCenterStatus  @default(ACTIVE)
+  validFrom DateTime?
+  validUntil DateTime?
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  parent    CostCenter?  @relation("CostCenterTree", fields: [parentId], references: [id])
+  children  CostCenter[] @relation("CostCenterTree")
+  payables  Payable[]
+  employees Employee[]
+
+  @@map("cost_centers")
+}
+
+enum ResultCenterStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model ResultCenter {
+  id        String              @id @default(uuid())
+  code      String              @unique
+  name      String
+  parentId  String?
+  status    ResultCenterStatus  @default(ACTIVE)
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+
+  parent      ResultCenter?  @relation("ResultCenterTree", fields: [parentId], references: [id])
+  children    ResultCenter[] @relation("ResultCenterTree")
+  receivables Receivable[]
+
+  @@map("result_centers")
+}
+
+// =============================================================================
+// Contas a Pagar (FINANCIAL_MODEL §6-9)
+// =============================================================================
+
+enum CounterpartyType {
+  CUSTOMER
+  SUPPLIER
+  EMPLOYEE
+  GOVERNMENT
+  BANK
+  PARTNER
+  OTHER
+}
+
+enum PayableSourceType {
+  PURCHASE_ORDER
+  SUPPLIER_INVOICE
+  CONTRACT
+  PAYROLL
+  TAX
+  EXPENSE_REIMBURSEMENT
+  LOAN
+  RENT
+  MANUAL_ENTRY
+  OTHER
+}
+
+// "OVERDUE" é calculado (installment.dueDate < hoje && openAmount > 0), não persistido.
+enum PayableStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  OPEN
+  PARTIALLY_SETTLED
+  SETTLED
+  CANCELLED
+}
+
+// Docx §8.1 — naturezas de obrigação de colaboradores.
+enum EmployeeObligationType {
+  SALARY
+  SALARY_ADVANCE
+  VACATION
+  THIRTEENTH_SALARY
+  REIMBURSEMENT
+  BENEFIT
+  SEVERANCE
+  PRO_LABORE
+  OTHER
+}
+
+model Payable {
+  id                     String                  @id @default(uuid())
+  counterpartyType       CounterpartyType
+  supplierId             String?
+  employeeId             String?
+  employeeObligationType EmployeeObligationType?
+  description            String
+  documentNumber         String?
+  documentType           String?
+  issueDate              DateTime?
+  competenceDate         DateTime
+  originalAmount         Decimal                 @db.Decimal(19, 4)
+  currency               Currency                @default(BRL)
+  status                 PayableStatus           @default(DRAFT)
+  sourceType             PayableSourceType       @default(MANUAL_ENTRY)
+  sourceId               String?
+  isDirectCost           Boolean                 @default(false)
+  projectId              String?
+  costCenterId           String
+  managementAccountId    String
+  contractId             String?
+  createdById            String
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+
+  supplier          Supplier?               @relation(fields: [supplierId], references: [id])
+  employee          Employee?               @relation(fields: [employeeId], references: [id])
+  project           Project?                @relation(fields: [projectId], references: [id])
+  costCenter        CostCenter              @relation(fields: [costCenterId], references: [id])
+  managementAccount ManagementAccount       @relation(fields: [managementAccountId], references: [id])
+  contract          Contract?               @relation(fields: [contractId], references: [id])
+  installments      PayableInstallment[]
+  withholdings      Withholding[]
+  documentLinks     FinancialDocumentLink[]
+
+  @@index([competenceDate])
+  @@index([status])
+  @@index([supplierId])
+  @@index([employeeId])
+  @@map("payables")
+}
+
+enum PayableInstallmentStatus {
+  OPEN
+  PARTIALLY_SETTLED
+  SETTLED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  PIX
+  BANK_TRANSFER
+  BOLETO
+  CREDIT_CARD
+  DEBIT_CARD
+  CASH
+  DIRECT_DEBIT
+  CHECK
+  OTHER
+}
+
+model PayableInstallment {
+  id                  String                    @id @default(uuid())
+  payableId           String
+  sequence            Int
+  dueDate             DateTime
+  originalDueDate     DateTime?
+  originalAmount      Decimal                   @db.Decimal(19, 4)
+  openAmount          Decimal                   @db.Decimal(19, 4)
+  status              PayableInstallmentStatus  @default(OPEN)
+  expectedPaymentDate DateTime?
+  paymentMethod       PaymentMethod?
+  barcode             String?
+  pixKey              String?
+  notes               String?
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
+
+  payable     Payable              @relation(fields: [payableId], references: [id])
+  allocations PaymentAllocation[]
+
+  @@unique([payableId, sequence])
+  @@index([dueDate])
+  @@index([status])
+  @@map("payable_installments")
+}
+
+enum PaymentStatus {
+  PENDING
+  CONFIRMED
+  RECONCILED
+  REVERSED
+  CANCELLED
+}
+
+model Payment {
+  id                String        @id @default(uuid())
+  paymentDate       DateTime
+  amount            Decimal       @db.Decimal(19, 4)
+  currency          Currency      @default(BRL)
+  financialAccountId String
+  paymentMethod     PaymentMethod
+  reference         String?
+  status            PaymentStatus @default(CONFIRMED)
+  reversedPaymentId String?       @unique
+  createdById       String
+  createdAt         DateTime      @default(now())
+
+  financialAccount FinancialAccount     @relation(fields: [financialAccountId], references: [id])
+  reversalOf       Payment?             @relation("PaymentReversal", fields: [reversedPaymentId], references: [id])
+  reversedBy       Payment?             @relation("PaymentReversal")
+  allocations      PaymentAllocation[]
+  matches          ReconciliationMatch[]
+
+  @@index([financialAccountId])
+  @@index([status])
+  @@map("payments")
+}
+
+model PaymentAllocation {
+  id                    String   @id @default(uuid())
+  paymentId             String
+  payableInstallmentId  String
+  principalAmount       Decimal  @db.Decimal(19, 4)
+  interestAmount        Decimal  @default(0) @db.Decimal(19, 4)
+  penaltyAmount         Decimal  @default(0) @db.Decimal(19, 4)
+  discountAmount        Decimal  @default(0) @db.Decimal(19, 4)
+  withholdingAmount     Decimal  @default(0) @db.Decimal(19, 4)
+  allocatedAmount       Decimal  @db.Decimal(19, 4)
+  createdAt             DateTime @default(now())
+
+  payment             Payment             @relation(fields: [paymentId], references: [id])
+  payableInstallment  PayableInstallment  @relation(fields: [payableInstallmentId], references: [id])
+
+  @@index([paymentId])
+  @@index([payableInstallmentId])
+  @@map("payment_allocations")
+}
+
+// =============================================================================
+// Contas a Receber (FINANCIAL_MODEL §10-13)
+// =============================================================================
+
+enum ReceivableSourceType {
+  CONTRACT
+  BILLING_SCHEDULE
+  MEASUREMENT
+  SALES_ORDER
+  SERVICE_INVOICE
+  PRODUCT_INVOICE
+  ADVANCE_REQUEST
+  MANUAL_ENTRY
+  OTHER
+}
+
+enum ReceivableStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  OPEN
+  PARTIALLY_SETTLED
+  SETTLED
+  CANCELLED
+  WRITTEN_OFF
+}
+
+// Docx §11 — "Nível de certeza: Comprometido ou Previsto".
+enum ReceivableCertaintyLevel {
+  COMMITTED
+  FORECAST
+}
+
+model Receivable {
+  id                   String                    @id @default(uuid())
+  customerId           String
+  description          String
+  documentNumber       String?
+  documentType         String?
+  issueDate            DateTime?
+  competenceDate       DateTime
+  originalAmount       Decimal                   @db.Decimal(19, 4)
+  currency             Currency                  @default(BRL)
+  status               ReceivableStatus          @default(DRAFT)
+  certaintyLevel       ReceivableCertaintyLevel  @default(COMMITTED)
+  sourceType           ReceivableSourceType      @default(MANUAL_ENTRY)
+  sourceId             String?
+  projectId            String?
+  resultCenterId       String?
+  managementAccountId  String
+  contractId           String?
+  createdById          String
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+
+  customer          Customer                 @relation(fields: [customerId], references: [id])
+  project           Project?                 @relation(fields: [projectId], references: [id])
+  resultCenter      ResultCenter?            @relation(fields: [resultCenterId], references: [id])
+  managementAccount ManagementAccount        @relation(fields: [managementAccountId], references: [id])
+  contract          Contract?                @relation(fields: [contractId], references: [id])
+  installments      ReceivableInstallment[]
+  withholdings      Withholding[]
+  documentLinks     FinancialDocumentLink[]
+
+  @@index([competenceDate])
+  @@index([status])
+  @@index([customerId])
+  @@map("receivables")
+}
+
+enum ReceivableInstallmentStatus {
+  OPEN
+  PARTIALLY_SETTLED
+  SETTLED
+  CANCELLED
+  WRITTEN_OFF
+}
+
+model ReceivableInstallment {
+  id                  String                        @id @default(uuid())
+  receivableId        String
+  sequence            Int
+  dueDate             DateTime
+  originalDueDate     DateTime?
+  expectedReceiptDate DateTime?
+  originalAmount      Decimal                       @db.Decimal(19, 4)
+  openAmount          Decimal                       @db.Decimal(19, 4)
+  status              ReceivableInstallmentStatus   @default(OPEN)
+  billingReference    String?
+  notes               String?
+  createdAt           DateTime                      @default(now())
+  updatedAt           DateTime                      @updatedAt
+
+  receivable  Receivable            @relation(fields: [receivableId], references: [id])
+  allocations ReceiptAllocation[]
+
+  @@unique([receivableId, sequence])
+  @@index([dueDate])
+  @@index([status])
+  @@map("receivable_installments")
+}
+
+enum ReceiptStatus {
+  PENDING
+  CONFIRMED
+  RECONCILED
+  REVERSED
+  CANCELLED
+}
+
+model Receipt {
+  id                 String        @id @default(uuid())
+  receiptDate        DateTime
+  amount             Decimal       @db.Decimal(19, 4)
+  currency           Currency      @default(BRL)
+  financialAccountId String
+  receiptMethod      PaymentMethod
+  reference          String?
+  status             ReceiptStatus @default(CONFIRMED)
+  reversedReceiptId  String?       @unique
+  createdById        String
+  createdAt          DateTime      @default(now())
+
+  financialAccount FinancialAccount     @relation(fields: [financialAccountId], references: [id])
+  reversalOf       Receipt?             @relation("ReceiptReversal", fields: [reversedReceiptId], references: [id])
+  reversedBy       Receipt?             @relation("ReceiptReversal")
+  allocations      ReceiptAllocation[]
+  matches          ReconciliationMatch[]
+
+  @@index([financialAccountId])
+  @@index([status])
+  @@map("receipts")
+}
+
+model ReceiptAllocation {
+  id                       String   @id @default(uuid())
+  receiptId                String
+  receivableInstallmentId  String
+  principalAmount          Decimal  @db.Decimal(19, 4)
+  interestAmount           Decimal  @default(0) @db.Decimal(19, 4)
+  penaltyAmount            Decimal  @default(0) @db.Decimal(19, 4)
+  discountAmount           Decimal  @default(0) @db.Decimal(19, 4)
+  withholdingAmount        Decimal  @default(0) @db.Decimal(19, 4)
+  allocatedAmount          Decimal  @db.Decimal(19, 4)
+  createdAt                DateTime @default(now())
+
+  receipt                Receipt                 @relation(fields: [receiptId], references: [id])
+  receivableInstallment  ReceivableInstallment    @relation(fields: [receivableInstallmentId], references: [id])
+
+  @@index([receiptId])
+  @@index([receivableInstallmentId])
+  @@map("receipt_allocations")
+}
+
+enum WithholdingType {
+  IRRF
+  INSS
+  ISS
+  PIS
+  COFINS
+  CSLL
+  CONTRACTUAL_HOLDBACK
+  WARRANTY_RETENTION
+  OTHER
+}
+
+enum WithholdingStatus {
+  PENDING
+  SETTLED
+  CANCELLED
+}
+
+model Withholding {
+  id               String            @id @default(uuid())
+  type             WithholdingType
+  taxCode          String?
+  calculationBase  Decimal           @db.Decimal(19, 4)
+  rate             Decimal           @db.Decimal(9, 6)
+  amount           Decimal           @db.Decimal(19, 4)
+  responsibleParty String?
+  dueDate          DateTime?
+  status           WithholdingStatus @default(PENDING)
+  payableId        String?
+  receivableId     String?
+  createdAt        DateTime          @default(now())
+
+  payable    Payable?    @relation(fields: [payableId], references: [id])
+  receivable Receivable? @relation(fields: [receivableId], references: [id])
+
+  @@map("withholdings")
+}
+
+// =============================================================================
+// Banco e Conciliação (ADR-009)
+// =============================================================================
+
+enum BankTransactionSource {
+  MANUAL
+  OFX_IMPORT
+  CSV_IMPORT
+  BANK_API
+  OPEN_FINANCE
+  SYSTEM_GENERATED
+}
+
+enum BankStatementImportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  COMPLETED_WITH_ERRORS
+  FAILED
+  CANCELLED
+}
+
+model BankStatementImport {
+  id                  String                       @id @default(uuid())
+  financialAccountId  String
+  source              BankTransactionSource        @default(OFX_IMPORT)
+  fileName            String
+  fileHash            String
+  periodStart         DateTime?
+  periodEnd           DateTime?
+  status              BankStatementImportStatus    @default(PENDING)
+  totalRecords        Int                          @default(0)
+  importedRecords     Int                          @default(0)
+  duplicateRecords    Int                          @default(0)
+  rejectedRecords     Int                          @default(0)
+  documentId          String?
+  createdById         String
+  createdAt           DateTime                     @default(now())
+
+  financialAccount FinancialAccount   @relation(fields: [financialAccountId], references: [id])
+  transactions     BankTransaction[]
+
+  @@unique([financialAccountId, fileHash])
+  @@map("bank_statement_imports")
+}
+
+enum BankTransactionDirection {
+  CREDIT
+  DEBIT
+}
+
+enum BankTransactionStatus {
+  PENDING
+  POSTED
+  REVERSED
+  IGNORED
+}
+
+enum BankTransactionReconciliationStatus {
+  UNRECONCILED
+  SUGGESTED
+  PARTIALLY_RECONCILED
+  RECONCILED
+  DIVERGENT
+}
+
+model BankTransaction {
+  id                    String                                @id @default(uuid())
+  financialAccountId    String
+  externalId            String?
+  transactionDate       DateTime
+  postingDate           DateTime?
+  amount                Decimal                               @db.Decimal(19, 4)
+  direction              BankTransactionDirection
+  currency              Currency                              @default(BRL)
+  description           String?
+  documentNumber        String?
+  counterpartyName      String?
+  counterpartyDocument  String?
+  bankReference         String?
+  source                BankTransactionSource                 @default(OFX_IMPORT)
+  status                BankTransactionStatus                 @default(POSTED)
+  reconciliationStatus  BankTransactionReconciliationStatus    @default(UNRECONCILED)
+  importBatchId         String?
+  createdAt             DateTime                              @default(now())
+
+  financialAccount FinancialAccount     @relation(fields: [financialAccountId], references: [id])
+  importBatch      BankStatementImport? @relation(fields: [importBatchId], references: [id])
+  matches          ReconciliationMatch[]
+
+  @@unique([financialAccountId, externalId])
+  @@index([financialAccountId, transactionDate])
+  @@index([reconciliationStatus])
+  @@map("bank_transactions")
+}
+
+enum BankReconciliationStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  REOPENED
+  CANCELLED
+}
+
+model BankReconciliation {
+  id                    String                     @id @default(uuid())
+  financialAccountId    String
+  statementPeriodStart  DateTime
+  statementPeriodEnd    DateTime
+  status                BankReconciliationStatus  @default(OPEN)
+  startedById           String?
+  startedAt             DateTime                  @default(now())
+  completedById         String?
+  completedAt           DateTime?
+
+  financialAccount FinancialAccount @relation(fields: [financialAccountId], references: [id])
+
+  @@map("bank_reconciliations")
+}
+
+enum ReconciliationMatchType {
+  AUTOMATIC
+  MANUAL
+  RULE_BASED
+}
+
+enum ReconciliationTargetType {
+  PAYMENT
+  RECEIPT
+  TRANSFER
+  BANK_FEE
+  FINANCIAL_INCOME
+  ADVANCE
+  OTHER
+}
+
+enum ReconciliationMatchStatus {
+  ACTIVE
+  REVERSED
+}
+
+model ReconciliationMatch {
+  id                String                      @id @default(uuid())
+  bankTransactionId String
+  targetType        ReconciliationTargetType
+  paymentId         String?
+  receiptId         String?
+  matchedAmount     Decimal                     @db.Decimal(19, 4)
+  matchType         ReconciliationMatchType
+  confidenceScore   Int?
+  criteria          Json?
+  status            ReconciliationMatchStatus   @default(ACTIVE)
+  matchedById       String?
+  matchedAt         DateTime                    @default(now())
+  reversedById      String?
+  reversedAt        DateTime?
+  reversalReason    String?
+
+  bankTransaction BankTransaction @relation(fields: [bankTransactionId], references: [id])
+  payment         Payment?        @relation(fields: [paymentId], references: [id])
+  receipt         Receipt?        @relation(fields: [receiptId], references: [id])
+
+  @@index([bankTransactionId])
+  @@index([paymentId])
+  @@index([receiptId])
+  @@map("reconciliation_matches")
+}
+
+// =============================================================================
+// Transferências entre contas
+// =============================================================================
+
+enum FinancialTransferStatus {
+  DRAFT
+  CONFIRMED
+  RECONCILED
+  REVERSED
+  CANCELLED
+}
+
+model FinancialTransfer {
+  id                          String                    @id @default(uuid())
+  sourceAccountId             String
+  destinationAccountId        String
+  transferDate                DateTime
+  amount                      Decimal                   @db.Decimal(19, 4)
+  currency                    Currency                  @default(BRL)
+  feeAmount                   Decimal                   @default(0) @db.Decimal(19, 4)
+  status                      FinancialTransferStatus   @default(DRAFT)
+  outgoingBankTransactionId   String?
+  incomingBankTransactionId   String?
+  reference                   String?
+  createdById                 String
+  createdAt                   DateTime                  @default(now())
+
+  sourceAccount      FinancialAccount @relation("TransferSource", fields: [sourceAccountId], references: [id])
+  destinationAccount FinancialAccount @relation("TransferDestination", fields: [destinationAccountId], references: [id])
+
+  @@map("financial_transfers")
+}
+
+// =============================================================================
+// Fechamento de Período Financeiro (ADR-008)
+// =============================================================================
+
+enum FinancialPeriodStatus {
+  OPEN
+  CLOSING
+  CLOSED
+  REOPENED
+}
+
+model FinancialPeriod {
+  id               String                  @id @default(uuid())
+  legalEntityId    String?
+  year             Int
+  month            Int
+  startDate        DateTime
+  endDate          DateTime
+  status           FinancialPeriodStatus   @default(OPEN)
+  closedById       String?
+  closedAt         DateTime?
+  reopenedById     String?
+  reopenedAt       DateTime?
+  reopeningReason  String?
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  legalEntity LegalEntity?              @relation(fields: [legalEntityId], references: [id])
+  closings    FinancialPeriodClosing[]
+
+  @@unique([legalEntityId, year, month])
+  @@map("financial_periods")
+}
+
+model FinancialPeriodClosing {
+  id                  String    @id @default(uuid())
+  financialPeriodId   String
+  version             Int
+  closedById          String
+  closedAt            DateTime  @default(now())
+  status              String
+  blockingIssues      Json?
+  warnings            Json?
+  metricsSnapshot     Json?
+  previousClosingId   String?
+
+  financialPeriod FinancialPeriod @relation(fields: [financialPeriodId], references: [id])
+
+  @@unique([financialPeriodId, version])
+  @@map("financial_period_closings")
+}
+
+// =============================================================================
+// Documentos (mínimo — ADR-005)
+// =============================================================================
+
+enum DocumentClassification {
+  PUBLIC
+  INTERNAL
+  CONFIDENTIAL
+  RESTRICTED
+}
+
+enum DocumentStatus {
+  PENDING_VALIDATION
+  AVAILABLE
+  BLOCKED
+  REJECTED
+  QUARANTINED
+  ARCHIVED
+  DELETED
+}
+
+model Document {
+  id                String                    @id @default(uuid())
+  title             String
+  category          String
+  classification    DocumentClassification    @default(INTERNAL)
+  status            DocumentStatus            @default(PENDING_VALIDATION)
+  currentVersionId  String?
+  createdById       String
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+
+  versions DocumentVersion[]
+  links    FinancialDocumentLink[]
+
+  @@map("documents")
+}
+
+model DocumentVersion {
+  id             String          @id @default(uuid())
+  documentId     String
+  versionNumber  Int
+  storageDriver  String
+  storageKey     String
+  originalName   String
+  mimeType       String
+  sizeBytes      Int
+  hash           String
+  authorId       String
+  description    String?
+  status         DocumentStatus  @default(AVAILABLE)
+  createdAt      DateTime        @default(now())
+
+  document Document @relation(fields: [documentId], references: [id])
+
+  @@unique([documentId, versionNumber])
+  @@map("document_versions")
+}
+
+enum FinancialDocumentRole {
+  INVOICE
+  PAYMENT_SLIP
+  PAYMENT_PROOF
+  RECEIPT_PROOF
+  CONTRACT
+  PURCHASE_ORDER
+  MEASUREMENT
+  TAX_GUIDE
+  BANK_STATEMENT
+  OTHER
+}
+
+model FinancialDocumentLink {
+  id            String                  @id @default(uuid())
+  documentId    String
+  payableId     String?
+  receivableId  String?
+  role          FinancialDocumentRole
+  createdById   String
+  createdAt     DateTime                @default(now())
+
+  document   Document    @relation(fields: [documentId], references: [id])
+  payable    Payable?    @relation(fields: [payableId], references: [id])
+  receivable Receivable? @relation(fields: [receivableId], references: [id])
+
+  @@map("financial_document_links")
+}

@@ -1,0 +1,21 @@
+{
+  "name": "@aritech/validation",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit",
+    "test": "echo \"(no tests yet in @aritech/validation)\"",
+    "clean": "rimraf node_modules .turbo"
+  },
+  "dependencies": {
+    "zod": "^3.24.1",
+    "@aritech/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "rimraf": "^6.0.1"
+  }
+}
