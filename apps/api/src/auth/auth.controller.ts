@@ -34,7 +34,11 @@ export class AuthController {
       secure,
       sameSite: "lax",
       maxAge: pair.refreshTokenMaxAgeMs,
-      path: "/api/auth",
+      // Precisa bater com o prefixo global ("api/v1", definido em main.ts) +
+      // o path do controller ("auth"), senão o navegador nunca reenvia este
+      // cookie para POST /api/v1/auth/refresh — bug real encontrado ao testar
+      // a expiração do access token (15m) manualmente.
+      path: "/api/v1/auth",
     });
   }
 
@@ -83,7 +87,7 @@ export class AuthController {
       await this.auth.revokeRefreshToken(rawToken);
     }
     res.clearCookie(ACCESS_COOKIE, { path: "/" });
-    res.clearCookie(REFRESH_COOKIE, { path: "/api/auth" });
+    res.clearCookie(REFRESH_COOKIE, { path: "/api/v1/auth" });
     return { ok: true };
   }
 
