@@ -197,9 +197,11 @@ export class ReceiptsService {
       await tx.receipt.update({ where: { id: receipt.id }, data: { status: "REVERSED" } });
 
       for (const allocation of receipt.allocations) {
-        const debtReduction = Money.of(allocation.principalAmount.toString())
-          .add(Money.of(allocation.discountAmount.toString()))
-          .add(Money.of(allocation.withholdingAmount.toString()));
+        // Mesma fórmula de computeAllocationAmounts: retenção não soma ao
+        // debtReduction (ver payment-math.util.ts).
+        const debtReduction = Money.of(allocation.principalAmount.toString()).add(
+          Money.of(allocation.discountAmount.toString()),
+        );
 
         const installment = await tx.receivableInstallment.findUniqueOrThrow({
           where: { id: allocation.receivableInstallmentId },

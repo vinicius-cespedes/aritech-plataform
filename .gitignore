@@ -21,6 +21,9 @@ coverage/
 # Prisma
 packages/database/generated/
 
+# TypeScript incremental build info
+*.tsbuildinfo
+
 # Logs
 *.log
 npm-debug.log*

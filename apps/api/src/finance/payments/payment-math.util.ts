@@ -16,9 +16,14 @@ export interface AllocationComponents {
  *   multa - desconto - retenção (docx §10: "Valor de caixa = principal +
  *   juros + multa - desconto").
  * - `debtReduction` (quanto do saldo em aberto da parcela é abatido) =
- *   principal + desconto + retenção — juros/multa são encargos adicionais que
- *   não fazem parte do valor de face da parcela; desconto/retenção abatem o
- *   valor devido mesmo sem representar caixa.
+ *   principal + desconto. A retenção NÃO soma aqui: ela é uma fração do
+ *   próprio principal que não vira caixa, não um valor adicional — ADR-009
+ *   §46 ("Receivable bruto 100.000, retenção 6.150, banco 93.850,
+ *   Receivable settled = 100.000"): a parcela é liquidada pelo valor de
+ *   principal informado (100.000), e a retenção só afeta quanto disso chega
+ *   de fato ao banco. Juros/multa são encargos adicionais que não fazem
+ *   parte do valor de face da parcela; desconto abate o valor devido mesmo
+ *   sem representar caixa.
  *
  * Simplificação assumida nesta primeira iteração (documentada para revisão
  * futura junto de FINANCIAL_MODEL.md, que deixa juros/renegociação como
@@ -34,7 +39,7 @@ export function computeAllocationAmounts(components: AllocationComponents): {
     .subtract(components.discountAmount)
     .subtract(components.withholdingAmount);
 
-  const debtReduction = components.principalAmount.add(components.discountAmount).add(components.withholdingAmount);
+  const debtReduction = components.principalAmount.add(components.discountAmount);
 
   return { cashAmount, debtReduction };
 }

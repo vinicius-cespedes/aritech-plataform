@@ -156,7 +156,7 @@ export class PeriodsService {
     });
     const nextVersion = (lastClosing?.version ?? 0) + 1;
 
-    const [, closing] = await this.prisma.client.$transaction([
+    await this.prisma.client.$transaction([
       this.prisma.client.financialPeriod.update({
         where: { id },
         data: { status: "CLOSED", closedAt: new Date(), closedById: actorUserId },

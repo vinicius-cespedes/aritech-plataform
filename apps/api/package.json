@@ -7,10 +7,20 @@
     "dev": "nest start --watch",
     "start": "nest start",
     "start:prod": "node dist/main.js",
-    "lint": "eslint \"{src,test}/**/*.ts\"",
+    "lint": "eslint --config ../../eslint.config.mjs src",
     "typecheck": "tsc --noEmit",
     "test": "jest",
     "clean": "rimraf dist node_modules .turbo"
+  },
+  "jest": {
+    "moduleFileExtensions": ["js", "json", "ts"],
+    "rootDir": "src",
+    "testRegex": ".*\\.spec\\.ts$",
+    "transform": {
+      "^.+\\.(t|j)s$": "ts-jest"
+    },
+    "collectCoverageFrom": ["**/*.(t|j)s"],
+    "testEnvironment": "node"
   },
   "dependencies": {
     "@aritech/database": "workspace:*",

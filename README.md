@@ -65,6 +65,68 @@ Licença
 Projeto desenvolvido exclusivamente para a Aritech Soluções Industriais.
 Todos os direitos reservados.
 
+---
+
+Desenvolvimento local
+
+Esta seção descreve como rodar o monorepo do núcleo financeiro (primeira fase
+do Aritech Digital, ver `docs/`) localmente. Para o contexto arquitetural
+completo, leia `docs/architecture/`, `docs/adr/` e `docs/domain/` antes de
+alterar regras de negócio.
+
+Pré-requisitos
+
+- Node.js 20+ e pnpm (`corepack enable` ou `npm i -g pnpm`).
+- PostgreSQL 16/17 rodando localmente (via `infrastructure/docker-compose.yml`
+  ou instalação nativa).
+
+Estrutura
+
+```text
+apps/
+  api/          NestJS — API REST em /api/v1, Swagger em /api/docs
+  web/          Next.js — frontend (App Router)
+packages/
+  database/     schema.prisma, migrations, seed
+  shared/       Money/arredondamento (ADR-007), permissões, erros de domínio
+  validation/   schemas Zod compartilhados entre api e web
+```
+
+Passo a passo
+
+```bash
+# 1. Banco de dados local (ou use uma instância PostgreSQL já existente)
+docker compose -f infrastructure/docker-compose.yml up -d
+
+# 2. Instalar dependências
+pnpm install
+
+# 3. Configurar variáveis de ambiente
+cp .env.example packages/database/.env   # ajuste DATABASE_URL se necessário
+cp .env.example apps/api/.env            # ajuste segredos JWT em produção
+
+# 4. Migrar e popular o banco
+pnpm db:migrate
+pnpm db:seed
+# a saída do seed mostra o e-mail/senha inicial do usuário administrador
+
+# 5. Rodar em desenvolvimento (dois terminais, ou `pnpm dev` na raiz via Turborepo)
+pnpm --filter api dev     # http://localhost:3001/api/docs
+pnpm --filter web dev     # http://localhost:3000
+```
+
+Outros comandos úteis: `pnpm build`, `pnpm test`, `pnpm lint`, `pnpm typecheck`
+(todos via Turborepo, cascateando para os pacotes do workspace) e
+`pnpm db:studio` para inspecionar o banco pelo Prisma Studio.
+
+Escopo desta primeira iteração e o que ainda falta estão documentados no
+histórico de commits e podem ser resumidos como: núcleo financeiro (cadastros,
+contas a pagar/receber, pagamentos/recebimentos, conciliação bancária via OFX,
+fechamento de período, fluxo de caixa) implementado e verificado ponta a
+ponta; módulos de Contratos/Projetos/Compras completos, multi-empresa,
+multimoeda, MFA e integrações bancárias diretas ficam para iterações
+seguintes, conforme o roadmap em `docs/adr/`.
+
 README (English)
 
 Aritech Digital

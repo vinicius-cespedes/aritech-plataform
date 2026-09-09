@@ -36,7 +36,6 @@ async function bootstrap(): Promise<void> {
 
   const port = config.get<number>("API_PORT", 3001);
   await app.listen(port);
-  // eslint-disable-next-line no-console
   console.log(`Aritech API rodando em http://localhost:${port}/api/v1 (docs em /api/docs)`);
 }
 

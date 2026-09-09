@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+env:
+  DATABASE_URL: "postgresql://aritech:aritech@localhost:5432/aritech_ci?schema=public"
+  JWT_ACCESS_SECRET: "ci-access-secret"
+  JWT_REFRESH_SECRET: "ci-refresh-secret"
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: aritech
+          POSTGRES_PASSWORD: aritech
+          POSTGRES_DB: aritech_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aritech -d aritech_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Enable corepack / pnpm
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Prisma generate
+        run: pnpm --filter @aritech/database generate
+
+      - name: Apply migrations (validates schema.prisma against Postgres)
+        run: pnpm --filter @aritech/database exec prisma migrate deploy
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build
+        run: pnpm build
+
+      - name: Test
+        run: pnpm test
