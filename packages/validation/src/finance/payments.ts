@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { currencySchema, isoDateSchema, positiveDecimalStringSchema, uuidSchema } from "../common";
+import { currencySchema, isoDateSchema, nonNegativeDecimalStringSchema, positiveDecimalStringSchema, uuidSchema } from "../common";
 
 export const paymentMethodSchema = z.enum([
   "PIX",
@@ -17,10 +17,10 @@ export const paymentMethodSchema = z.enum([
 export const paymentAllocationInputSchema = z.object({
   payableInstallmentId: uuidSchema,
   principalAmount: positiveDecimalStringSchema,
-  interestAmount: positiveDecimalStringSchema.optional().default("0"),
-  penaltyAmount: positiveDecimalStringSchema.optional().default("0"),
-  discountAmount: positiveDecimalStringSchema.optional().default("0"),
-  withholdingAmount: positiveDecimalStringSchema.optional().default("0"),
+  interestAmount: nonNegativeDecimalStringSchema.optional().default("0"),
+  penaltyAmount: nonNegativeDecimalStringSchema.optional().default("0"),
+  discountAmount: nonNegativeDecimalStringSchema.optional().default("0"),
+  withholdingAmount: nonNegativeDecimalStringSchema.optional().default("0"),
 });
 export type PaymentAllocationInput = z.infer<typeof paymentAllocationInputSchema>;
 

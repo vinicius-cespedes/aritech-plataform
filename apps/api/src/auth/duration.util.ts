@@ -4,8 +4,8 @@ export function parseDurationToMs(duration: string): number {
   if (!match) {
     throw new Error(`Formato de duração inválido: "${duration}". Use algo como "15m" ou "7d".`);
   }
-  const value = Number(match[1]);
-  const unit = match[2];
+  const value = Number(match[1]!);
+  const unit = match[2]!;
   const factors: Record<string, number> = {
     ms: 1,
     s: 1000,

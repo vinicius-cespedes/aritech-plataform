@@ -1,5 +1,6 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { DomainError } from "@aritech/shared";
+import { Prisma } from "@aritech/database";
 import { PrismaService } from "../../common/prisma/prisma.service";
 import { AuditService } from "../../audit/audit.service";
 
@@ -37,8 +38,11 @@ export class PeriodsService {
   async findOrCreateForDate(date: Date, legalEntityId: string | null = null) {
     const year = date.getUTCFullYear();
     const month = date.getUTCMonth() + 1;
-    const existing = await this.prisma.client.financialPeriod.findUnique({
-      where: { legalEntityId_year_month: { legalEntityId, year, month } },
+    // findFirst (em vez de findUnique pela chave composta) porque o Prisma
+    // tipa a chave composta como não-nula mesmo com legalEntityId opcional;
+    // a restrição @@unique no banco continua garantindo a integridade.
+    const existing = await this.prisma.client.financialPeriod.findFirst({
+      where: { legalEntityId, year, month },
     });
     if (existing) return existing;
 
@@ -163,8 +167,8 @@ export class PeriodsService {
           version: nextVersion,
           closedById: actorUserId,
           status: "CLOSED",
-          blockingIssues: validation.blockingIssues,
-          warnings: validation.warnings,
+          blockingIssues: validation.blockingIssues as unknown as Prisma.InputJsonValue,
+          warnings: validation.warnings as unknown as Prisma.InputJsonValue,
           previousClosingId: lastClosing?.id,
         },
       }),

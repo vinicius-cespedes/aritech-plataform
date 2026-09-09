@@ -13,6 +13,16 @@ export const positiveDecimalStringSchema = decimalStringSchema.refine(
   "O valor deve ser maior que zero.",
 );
 
+/**
+ * Para componentes de alocação (juros, multa, desconto, retenção): ADR-007 §39
+ * permite explicitamente valor zero para esses campos ("0.0000" tem
+ * significado próprio, diferente de "não informado") — só não permite negativo.
+ */
+export const nonNegativeDecimalStringSchema = decimalStringSchema.refine(
+  (value) => Number.parseFloat(value) >= 0,
+  "O valor não pode ser negativo.",
+);
+
 export const uuidSchema = z.string().uuid();
 
 export const isoDateSchema = z
