@@ -41,6 +41,34 @@ function extractTag(block: string, tag: string): string | null {
   return open ? open[1]!.trim() : null;
 }
 
+/**
+ * Valor monetário do OFX (TRNAMT/BALAMT). A especificação exige ponto como
+ * separador decimal e nenhum separador de milhar, mas na prática vários
+ * bancos brasileiros (Santander entre eles) exportam OFX com vírgula
+ * decimal (ex.: "-1125,00" ou "-1.125,00") — este parser tolera ambos os
+ * formatos em vez de exigir estritamente o padrão OFX.
+ */
+function parseOfxAmount(raw: string): number {
+  const trimmed = raw.trim();
+
+  const hasComma = trimmed.includes(",");
+  const hasDot = trimmed.includes(".");
+
+  let normalized = trimmed;
+  if (hasComma && hasDot) {
+    // Ambos presentes: o separador que aparece por último é o decimal; o outro é de milhar.
+    normalized =
+      trimmed.lastIndexOf(",") > trimmed.lastIndexOf(".")
+        ? trimmed.replace(/\./g, "").replace(",", ".")
+        : trimmed.replace(/,/g, "");
+  } else if (hasComma) {
+    // Só vírgula: trata como decimal (formato pt-BR não conforme ao padrão OFX).
+    normalized = trimmed.replace(",", ".");
+  }
+
+  return Number(normalized);
+}
+
 /** Datas OFX vêm como "YYYYMMDD" ou "YYYYMMDDHHMMSS[.xxx][zona]". */
 function parseOfxDate(raw: string | null): Date | null {
   if (!raw) return null;
@@ -81,7 +109,7 @@ export function parseOfx(rawContent: string): NormalizedOfxStatement {
     if (!amountRaw) {
       throw new OfxParseError(`Transação #${index + 1} sem TRNAMT.`);
     }
-    const amountNumber = Number(amountRaw);
+    const amountNumber = parseOfxAmount(amountRaw);
     if (Number.isNaN(amountNumber)) {
       throw new OfxParseError(`Transação #${index + 1} com TRNAMT inválido: "${amountRaw}".`);
     }
