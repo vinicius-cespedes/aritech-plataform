@@ -5,7 +5,7 @@ import { Prisma } from "@aritech/database";
 import { PrismaService } from "../../common/prisma/prisma.service";
 import { AuditService } from "../../audit/audit.service";
 import { PeriodsService } from "../periods/periods.service";
-import { computeAllocationAmounts } from "./payment-math.util";
+import { computeAllocationAmounts, computeRestoredInstallmentStatus } from "./payment-math.util";
 
 @Injectable()
 export class PaymentsService {
@@ -152,15 +152,21 @@ export class PaymentsService {
     return this.get(payment.id);
   }
 
+  /**
+   * Deriva o status da Conta a Pagar a partir do status atual de suas
+   * parcelas — usado tanto ao registrar quanto ao estornar um pagamento, para
+   * que as duas direções (baixando e reabrindo o saldo) fiquem consistentes.
+   */
   private async recomputePayableStatus(tx: Prisma.TransactionClient, payableId: string): Promise<void> {
     const installments = await tx.payableInstallment.findMany({ where: { payableId } });
     const relevant = installments.filter((i) => i.status !== "CANCELLED");
-    const allSettled = relevant.length > 0 && relevant.every((i) => i.status === "SETTLED");
-    const anySettled = relevant.some((i) => i.status === "SETTLED" || i.status === "PARTIALLY_SETTLED");
-    const status = allSettled ? "SETTLED" : anySettled ? "PARTIALLY_SETTLED" : undefined;
-    if (status) {
-      await tx.payable.update({ where: { id: payableId }, data: { status } });
-    }
+    if (relevant.length === 0) return;
+
+    const allSettled = relevant.every((i) => i.status === "SETTLED");
+    const anySettledOrPartial = relevant.some((i) => i.status === "SETTLED" || i.status === "PARTIALLY_SETTLED");
+    const status = allSettled ? "SETTLED" : anySettledOrPartial ? "PARTIALLY_SETTLED" : "OPEN";
+
+    await tx.payable.update({ where: { id: payableId }, data: { status } });
   }
 
   /** FINANCIAL_MODEL §8.5 — estorno cria um novo pagamento de reversão; o original não é apagado. */
@@ -207,13 +213,15 @@ export class PaymentsService {
           where: { id: allocation.payableInstallmentId },
         });
         const restoredOpen = Money.of(installment.openAmount.toString()).add(debtReduction);
+        const originalAmount = Money.of(installment.originalAmount.toString());
+        const restoredStatus = computeRestoredInstallmentStatus(restoredOpen, originalAmount);
 
         await tx.payableInstallment.update({
           where: { id: installment.id },
-          data: { openAmount: restoredOpen.toApiString(), status: restoredOpen.isZero() ? "SETTLED" : "PARTIALLY_SETTLED" },
+          data: { openAmount: restoredOpen.toApiString(), status: restoredStatus },
         });
 
-        await tx.payable.update({ where: { id: installment.payableId }, data: { status: "OPEN" } });
+        await this.recomputePayableStatus(tx, installment.payableId);
       }
 
       await this.audit.record(tx, {

@@ -43,3 +43,22 @@ export function computeAllocationAmounts(components: AllocationComponents): {
 
   return { cashAmount, debtReduction };
 }
+
+export type InstallmentStatus = "OPEN" | "PARTIALLY_SETTLED" | "SETTLED";
+
+/**
+ * Status de uma parcela após restaurar `debtReduction` ao seu saldo em
+ * aberto (estorno de pagamento/recebimento — FINANCIAL_MODEL §8.5/§12.5).
+ *
+ * Ao contrário da baixa (onde o saldo diminui em direção a zero e
+ * `isZero() => SETTLED`), no estorno o saldo AUMENTA de volta em direção ao
+ * valor original — usar a mesma checagem `isZero()` aqui inverteria o
+ * resultado (bug real encontrado ao testar estorno: uma parcela totalmente
+ * restaurada ficava marcada como "Parcialmente liquidada" em vez de
+ * "Em aberto").
+ */
+export function computeRestoredInstallmentStatus(restoredOpenAmount: Money, originalAmount: Money): InstallmentStatus {
+  if (restoredOpenAmount.isZero()) return "SETTLED";
+  if (restoredOpenAmount.greaterThanOrEqualTo(originalAmount)) return "OPEN";
+  return "PARTIALLY_SETTLED";
+}

@@ -5,7 +5,7 @@ import { Prisma } from "@aritech/database";
 import { PrismaService } from "../../common/prisma/prisma.service";
 import { AuditService } from "../../audit/audit.service";
 import { PeriodsService } from "../periods/periods.service";
-import { computeAllocationAmounts } from "../payments/payment-math.util";
+import { computeAllocationAmounts, computeRestoredInstallmentStatus } from "../payments/payment-math.util";
 
 @Injectable()
 export class ReceiptsService {
@@ -152,15 +152,22 @@ export class ReceiptsService {
     return this.get(receipt.id);
   }
 
+  /**
+   * Deriva o status da Conta a Receber a partir do status atual de suas
+   * parcelas — usado tanto ao registrar quanto ao estornar um recebimento,
+   * para que as duas direções (baixando e reabrindo o saldo) fiquem
+   * consistentes.
+   */
   private async recomputeReceivableStatus(tx: Prisma.TransactionClient, receivableId: string): Promise<void> {
     const installments = await tx.receivableInstallment.findMany({ where: { receivableId } });
     const relevant = installments.filter((i) => i.status !== "CANCELLED" && i.status !== "WRITTEN_OFF");
-    const allSettled = relevant.length > 0 && relevant.every((i) => i.status === "SETTLED");
-    const anySettled = relevant.some((i) => i.status === "SETTLED" || i.status === "PARTIALLY_SETTLED");
-    const status = allSettled ? "SETTLED" : anySettled ? "PARTIALLY_SETTLED" : undefined;
-    if (status) {
-      await tx.receivable.update({ where: { id: receivableId }, data: { status } });
-    }
+    if (relevant.length === 0) return;
+
+    const allSettled = relevant.every((i) => i.status === "SETTLED");
+    const anySettledOrPartial = relevant.some((i) => i.status === "SETTLED" || i.status === "PARTIALLY_SETTLED");
+    const status = allSettled ? "SETTLED" : anySettledOrPartial ? "PARTIALLY_SETTLED" : "OPEN";
+
+    await tx.receivable.update({ where: { id: receivableId }, data: { status } });
   }
 
   /** FINANCIAL_MODEL §12.5 — estorno não apaga o recebimento original. */
@@ -207,13 +214,15 @@ export class ReceiptsService {
           where: { id: allocation.receivableInstallmentId },
         });
         const restoredOpen = Money.of(installment.openAmount.toString()).add(debtReduction);
+        const originalAmount = Money.of(installment.originalAmount.toString());
+        const restoredStatus = computeRestoredInstallmentStatus(restoredOpen, originalAmount);
 
         await tx.receivableInstallment.update({
           where: { id: installment.id },
-          data: { openAmount: restoredOpen.toApiString(), status: restoredOpen.isZero() ? "SETTLED" : "PARTIALLY_SETTLED" },
+          data: { openAmount: restoredOpen.toApiString(), status: restoredStatus },
         });
 
-        await tx.receivable.update({ where: { id: installment.receivableId }, data: { status: "OPEN" } });
+        await this.recomputeReceivableStatus(tx, installment.receivableId);
       }
 
       await this.audit.record(tx, {

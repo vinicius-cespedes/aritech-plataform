@@ -1,5 +1,5 @@
 import { Money } from "@aritech/shared";
-import { computeAllocationAmounts } from "./payment-math.util";
+import { computeAllocationAmounts, computeRestoredInstallmentStatus } from "./payment-math.util";
 
 function money(value: string) {
   return Money.of(value);
@@ -55,5 +55,24 @@ describe("computeAllocationAmounts", () => {
     });
     expect(cashAmount.toApiString()).toBe("450.0000");
     expect(debtReduction.toApiString()).toBe("550.0000");
+  });
+});
+
+describe("computeRestoredInstallmentStatus", () => {
+  // Bug real encontrado ao testar estorno manualmente: uma parcela cujo
+  // saldo era totalmente restaurado (estorno integral) ficava marcada como
+  // "PARTIALLY_SETTLED" em vez de "OPEN", porque o código antigo reutilizava
+  // a checagem `isZero()` da baixa (onde zero = liquidado), mas no estorno o
+  // saldo aumenta em direção ao valor original, não a zero.
+  it("estorno integral: saldo restaurado == valor original => OPEN", () => {
+    expect(computeRestoredInstallmentStatus(money("500"), money("500"))).toBe("OPEN");
+  });
+
+  it("estorno parcial: saldo restaurado > 0 e < valor original => PARTIALLY_SETTLED", () => {
+    expect(computeRestoredInstallmentStatus(money("300"), money("500"))).toBe("PARTIALLY_SETTLED");
+  });
+
+  it("saldo restaurado zero (não deveria ocorrer num estorno real, mas o caso é coberto) => SETTLED", () => {
+    expect(computeRestoredInstallmentStatus(money("0"), money("500"))).toBe("SETTLED");
   });
 });
