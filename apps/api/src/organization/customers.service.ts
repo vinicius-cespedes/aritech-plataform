@@ -13,18 +13,26 @@ export class CustomersService {
   list(includeInactive = false) {
     return this.prisma.client.customer.findMany({
       where: includeInactive ? {} : { isActive: true },
+      include: { contacts: true },
       orderBy: { name: "asc" },
     });
   }
 
   async get(id: string) {
-    const customer = await this.prisma.client.customer.findUnique({ where: { id } });
+    const customer = await this.prisma.client.customer.findUnique({ where: { id }, include: { contacts: true } });
     if (!customer) throw new NotFoundException({ code: "NOT_FOUND", message: "Cliente não encontrado." });
     return customer;
   }
 
   async create(data: CreateCustomerInput, actorUserId: string) {
-    const customer = await this.prisma.client.customer.create({ data });
+    const { contacts, ...fields } = data;
+    const customer = await this.prisma.client.customer.create({
+      data: {
+        ...fields,
+        contacts: contacts?.length ? { create: contacts.map(({ id: _id, ...c }) => c) } : undefined,
+      },
+      include: { contacts: true },
+    });
     await this.audit.record(undefined, {
       actorType: "USER",
       actorUserId,
@@ -39,9 +47,29 @@ export class CustomersService {
     return customer;
   }
 
+  /**
+   * `contacts`, quando presente no payload, SUBSTITUI a lista inteira
+   * (apaga e recria) — mais simples e correto que diff incremental para a
+   * quantidade pequena de contatos esperada por fornecedor/cliente.
+   */
   async update(id: string, data: Partial<CreateCustomerInput>, actorUserId: string) {
     const before = await this.get(id);
-    const customer = await this.prisma.client.customer.update({ where: { id }, data });
+    const { contacts, ...fields } = data;
+
+    const customer = await this.prisma.client.$transaction(async (tx) => {
+      if (contacts) {
+        await tx.contact.deleteMany({ where: { customerId: id } });
+      }
+      return tx.customer.update({
+        where: { id },
+        data: {
+          ...fields,
+          contacts: contacts ? { create: contacts.map(({ id: _id, ...c }) => c) } : undefined,
+        },
+        include: { contacts: true },
+      });
+    });
+
     await this.audit.record(undefined, {
       actorType: "USER",
       actorUserId,

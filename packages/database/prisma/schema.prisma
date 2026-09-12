@@ -182,18 +182,33 @@ model LegalEntity {
 }
 
 model Customer {
-  id        String   @id @default(uuid())
-  name      String
-  tradeName String?
-  taxId     String?
-  email     String?
-  phone     String?
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                     String   @id @default(uuid())
+  name                   String
+  tradeName              String?
+  taxId                  String?
+  stateRegistration      String?
+  municipalRegistration  String?
+  website                String?
+  businessArea           String?
+  addressZip             String?
+  addressStreet          String?
+  addressNumber          String?
+  addressComplement      String?
+  addressDistrict        String?
+  addressCity            String?
+  addressState           String?
+  addressCountry         String?  @default("BR")
+  // Contato principal (cadastro rápido) — contatos adicionais ficam em Contact[].
+  email                  String?
+  phone                  String?
+  notes                  String?
+  isActive               Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   contracts   Contract[]
   receivables Receivable[]
+  contacts    Contact[]
 
   @@index([taxId])
   @@map("customers")
@@ -216,6 +231,7 @@ model Supplier {
   addressCity            String?
   addressState           String?
   addressCountry         String?  @default("BR")
+  // Contato principal (cadastro rápido) — contatos adicionais ficam em Contact[].
   contactName            String?
   contactEmail           String?
   contactPhoneDdi        String?
@@ -226,9 +242,41 @@ model Supplier {
   updatedAt              DateTime @updatedAt
 
   payables Payable[]
+  contacts Contact[]
 
   @@index([taxId])
   @@map("suppliers")
+}
+
+/**
+ * Contatos adicionais de um fornecedor ou cliente (docx: "mais de um
+ * contato"). O contato principal continua nos campos planos de
+ * Supplier/Customer para cadastro rápido — este modelo cobre os demais.
+ * FKs explícitas (supplierId/customerId), nunca ambas preenchidas ao mesmo
+ * tempo, em vez de um par genérico entityType/entityId — ADR-003 §56 evita
+ * polimorfismo genérico quando o PostgreSQL pode garantir a integridade
+ * referencial por relação explícita.
+ */
+model Contact {
+  id         String   @id @default(uuid())
+  supplierId String?
+  customerId String?
+  name       String
+  role       String?
+  email      String?
+  phoneDdi   String?
+  phone      String?
+  isPrimary  Boolean  @default(false)
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  supplier Supplier? @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([supplierId])
+  @@index([customerId])
+  @@map("contacts")
 }
 
 model Employee {

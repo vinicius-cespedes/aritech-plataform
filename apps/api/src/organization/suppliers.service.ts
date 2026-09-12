@@ -13,18 +13,26 @@ export class SuppliersService {
   list(includeInactive = false) {
     return this.prisma.client.supplier.findMany({
       where: includeInactive ? {} : { isActive: true },
+      include: { contacts: true },
       orderBy: { name: "asc" },
     });
   }
 
   async get(id: string) {
-    const supplier = await this.prisma.client.supplier.findUnique({ where: { id } });
+    const supplier = await this.prisma.client.supplier.findUnique({ where: { id }, include: { contacts: true } });
     if (!supplier) throw new NotFoundException({ code: "NOT_FOUND", message: "Fornecedor não encontrado." });
     return supplier;
   }
 
   async create(data: CreateSupplierInput, actorUserId: string) {
-    const supplier = await this.prisma.client.supplier.create({ data });
+    const { contacts, ...fields } = data;
+    const supplier = await this.prisma.client.supplier.create({
+      data: {
+        ...fields,
+        contacts: contacts?.length ? { create: contacts.map(({ id: _id, ...c }) => c) } : undefined,
+      },
+      include: { contacts: true },
+    });
     await this.audit.record(undefined, {
       actorType: "USER",
       actorUserId,
@@ -39,10 +47,30 @@ export class SuppliersService {
     return supplier;
   }
 
+  /**
+   * `contacts`, quando presente no payload, SUBSTITUI a lista inteira
+   * (apaga e recria) — mais simples e correto que diff incremental para a
+   * quantidade pequena de contatos esperada por fornecedor/cliente.
+   */
   async update(id: string, data: Partial<CreateSupplierInput>, actorUserId: string) {
     const before = await this.get(id);
+    const { contacts, ...fields } = data;
     const isBankDataChange = false; // dados bancários não fazem parte do cadastro de fornecedor no MVP.
-    const supplier = await this.prisma.client.supplier.update({ where: { id }, data });
+
+    const supplier = await this.prisma.client.$transaction(async (tx) => {
+      if (contacts) {
+        await tx.contact.deleteMany({ where: { supplierId: id } });
+      }
+      return tx.supplier.update({
+        where: { id },
+        data: {
+          ...fields,
+          contacts: contacts ? { create: contacts.map(({ id: _id, ...c }) => c) } : undefined,
+        },
+        include: { contacts: true },
+      });
+    });
+
     await this.audit.record(undefined, {
       actorType: "USER",
       actorUserId,
