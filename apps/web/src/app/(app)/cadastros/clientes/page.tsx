@@ -15,6 +15,8 @@ interface Customer {
   isActive: boolean;
 }
 
+const EMPTY_FORM = { name: "", taxId: "", email: "", phone: "" };
+
 export default function CustomersPage() {
   const queryClient = useQueryClient();
   const { data: customers, isLoading } = useQuery({
@@ -23,24 +25,59 @@ export default function CustomersPage() {
   });
 
   const [showForm, setShowForm] = useState(false);
-  const [name, setName] = useState("");
-  const [taxId, setTaxId] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState(EMPTY_FORM);
   const [error, setError] = useState<string | null>(null);
 
+  function closeForm() {
+    setShowForm(false);
+    setEditingId(null);
+    setForm(EMPTY_FORM);
+    setError(null);
+  }
+
+  function openCreateForm() {
+    setEditingId(null);
+    setForm(EMPTY_FORM);
+    setError(null);
+    setShowForm(true);
+  }
+
+  function openEditForm(customer: Customer) {
+    setEditingId(customer.id);
+    setForm({
+      name: customer.name,
+      taxId: customer.taxId ?? "",
+      email: customer.email ?? "",
+      phone: customer.phone ?? "",
+    });
+    setError(null);
+    setShowForm(true);
+  }
+
+  const payload = () => ({
+    name: form.name,
+    taxId: form.taxId || undefined,
+    email: form.email || undefined,
+    phone: form.phone || undefined,
+  });
+
   const createMutation = useMutation({
-    mutationFn: () => api.post<Customer>("/customers", { name, taxId: taxId || undefined, email: email || undefined, phone: phone || undefined }),
+    mutationFn: () => api.post<Customer>("/customers", payload()),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["customers"] });
-      setShowForm(false);
-      setName("");
-      setTaxId("");
-      setEmail("");
-      setPhone("");
-      setError(null);
+      closeForm();
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : "Erro ao cadastrar cliente."),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: () => api.patch<Customer>(`/customers/${editingId}`, payload()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
+      closeForm();
+    },
+    onError: (err) => setError(err instanceof ApiError ? err.message : "Erro ao atualizar cliente."),
   });
 
   const deactivateMutation = useMutation({
@@ -50,39 +87,55 @@ export default function CustomersPage() {
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    createMutation.mutate();
+    if (editingId) {
+      updateMutation.mutate();
+    } else {
+      createMutation.mutate();
+    }
   }
+
+  const saving = createMutation.isPending || updateMutation.isPending;
 
   return (
     <div>
       <PageHeader
         title="Clientes"
         description="Cadastro de clientes — docx §6.2. Reutilizado na criação de contratos e contas a receber."
-        action={<Button onClick={() => setShowForm((v) => !v)}>{showForm ? "Cancelar" : "Novo cliente"}</Button>}
+        action={
+          <Button onClick={() => (showForm ? closeForm() : openCreateForm())}>
+            {showForm ? "Cancelar" : "Novo cliente"}
+          </Button>
+        }
       />
 
       {showForm && (
         <Card className="mb-6 p-5">
+          <h2 className="mb-4 text-sm font-semibold text-slate-700">{editingId ? "Editar cliente" : "Novo cliente"}</h2>
           <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Razão social *">
-              <Input required value={name} onChange={(e) => setName(e.target.value)} />
+              <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             </Field>
             <Field label="CNPJ/CPF">
-              <Input value={taxId} onChange={(e) => setTaxId(e.target.value)} />
+              <Input value={form.taxId} onChange={(e) => setForm({ ...form, taxId: e.target.value })} />
             </Field>
             <Field label="E-mail">
-              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+              <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
             </Field>
             <Field label="Telefone">
-              <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
+              <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
             </Field>
             <div className="sm:col-span-2">
               <ErrorBanner message={error} />
             </div>
-            <div className="sm:col-span-2">
-              <Button type="submit" disabled={createMutation.isPending}>
-                {createMutation.isPending ? "Salvando..." : "Salvar"}
+            <div className="flex gap-2 sm:col-span-2">
+              <Button type="submit" disabled={saving}>
+                {saving ? "Salvando..." : "Salvar"}
               </Button>
+              {editingId && (
+                <Button type="button" variant="secondary" onClick={closeForm}>
+                  Cancelar edição
+                </Button>
+              )}
             </div>
           </form>
         </Card>
@@ -115,7 +168,10 @@ export default function CustomersPage() {
                 <td className="px-4 py-3">
                   <StatusBadge status={customer.isActive ? "ACTIVE" : "INACTIVE"} />
                 </td>
-                <td className="px-4 py-3 text-right">
+                <td className="px-4 py-3 text-right space-x-2">
+                  <Button variant="ghost" onClick={() => openEditForm(customer)}>
+                    Editar
+                  </Button>
                   {customer.isActive && (
                     <Button variant="ghost" onClick={() => deactivateMutation.mutate(customer.id)}>
                       Inativar

@@ -15,6 +15,8 @@ interface Supplier {
   isActive: boolean;
 }
 
+const EMPTY_FORM = { name: "", taxId: "", contactEmail: "", contactPhone: "" };
+
 export default function SuppliersPage() {
   const queryClient = useQueryClient();
   const { data: suppliers, isLoading } = useQuery({
@@ -23,24 +25,59 @@ export default function SuppliersPage() {
   });
 
   const [showForm, setShowForm] = useState(false);
-  const [name, setName] = useState("");
-  const [taxId, setTaxId] = useState("");
-  const [contactEmail, setContactEmail] = useState("");
-  const [contactPhone, setContactPhone] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState(EMPTY_FORM);
   const [error, setError] = useState<string | null>(null);
 
+  function closeForm() {
+    setShowForm(false);
+    setEditingId(null);
+    setForm(EMPTY_FORM);
+    setError(null);
+  }
+
+  function openCreateForm() {
+    setEditingId(null);
+    setForm(EMPTY_FORM);
+    setError(null);
+    setShowForm(true);
+  }
+
+  function openEditForm(supplier: Supplier) {
+    setEditingId(supplier.id);
+    setForm({
+      name: supplier.name,
+      taxId: supplier.taxId ?? "",
+      contactEmail: supplier.contactEmail ?? "",
+      contactPhone: supplier.contactPhone ?? "",
+    });
+    setError(null);
+    setShowForm(true);
+  }
+
+  const payload = () => ({
+    name: form.name,
+    taxId: form.taxId || undefined,
+    contactEmail: form.contactEmail || undefined,
+    contactPhone: form.contactPhone || undefined,
+  });
+
   const createMutation = useMutation({
-    mutationFn: () => api.post<Supplier>("/suppliers", { name, taxId: taxId || undefined, contactEmail: contactEmail || undefined, contactPhone: contactPhone || undefined }),
+    mutationFn: () => api.post<Supplier>("/suppliers", payload()),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["suppliers"] });
-      setShowForm(false);
-      setName("");
-      setTaxId("");
-      setContactEmail("");
-      setContactPhone("");
-      setError(null);
+      closeForm();
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : "Erro ao cadastrar fornecedor."),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: () => api.patch<Supplier>(`/suppliers/${editingId}`, payload()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["suppliers"] });
+      closeForm();
+    },
+    onError: (err) => setError(err instanceof ApiError ? err.message : "Erro ao atualizar fornecedor."),
   });
 
   const deactivateMutation = useMutation({
@@ -50,39 +87,61 @@ export default function SuppliersPage() {
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    createMutation.mutate();
+    if (editingId) {
+      updateMutation.mutate();
+    } else {
+      createMutation.mutate();
+    }
   }
+
+  const saving = createMutation.isPending || updateMutation.isPending;
 
   return (
     <div>
       <PageHeader
         title="Fornecedores"
         description="Cadastro de fornecedores — docx §6.1. A exclusão é bloqueada quando existe conta a pagar vinculada."
-        action={<Button onClick={() => setShowForm((v) => !v)}>{showForm ? "Cancelar" : "Novo fornecedor"}</Button>}
+        action={
+          <Button onClick={() => (showForm ? closeForm() : openCreateForm())}>
+            {showForm ? "Cancelar" : "Novo fornecedor"}
+          </Button>
+        }
       />
 
       {showForm && (
         <Card className="mb-6 p-5">
+          <h2 className="mb-4 text-sm font-semibold text-slate-700">
+            {editingId ? "Editar fornecedor" : "Novo fornecedor"}
+          </h2>
           <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Razão social *">
-              <Input required value={name} onChange={(e) => setName(e.target.value)} />
+              <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             </Field>
             <Field label="CNPJ/CPF">
-              <Input value={taxId} onChange={(e) => setTaxId(e.target.value)} />
+              <Input value={form.taxId} onChange={(e) => setForm({ ...form, taxId: e.target.value })} />
             </Field>
             <Field label="E-mail de contato">
-              <Input type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} />
+              <Input
+                type="email"
+                value={form.contactEmail}
+                onChange={(e) => setForm({ ...form, contactEmail: e.target.value })}
+              />
             </Field>
             <Field label="Telefone de contato">
-              <Input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} />
+              <Input value={form.contactPhone} onChange={(e) => setForm({ ...form, contactPhone: e.target.value })} />
             </Field>
             <div className="sm:col-span-2">
               <ErrorBanner message={error} />
             </div>
-            <div className="sm:col-span-2">
-              <Button type="submit" disabled={createMutation.isPending}>
-                {createMutation.isPending ? "Salvando..." : "Salvar"}
+            <div className="flex gap-2 sm:col-span-2">
+              <Button type="submit" disabled={saving}>
+                {saving ? "Salvando..." : "Salvar"}
               </Button>
+              {editingId && (
+                <Button type="button" variant="secondary" onClick={closeForm}>
+                  Cancelar edição
+                </Button>
+              )}
             </div>
           </form>
         </Card>
@@ -115,7 +174,10 @@ export default function SuppliersPage() {
                 <td className="px-4 py-3">
                   <StatusBadge status={supplier.isActive ? "ACTIVE" : "INACTIVE"} />
                 </td>
-                <td className="px-4 py-3 text-right">
+                <td className="px-4 py-3 text-right space-x-2">
+                  <Button variant="ghost" onClick={() => openEditForm(supplier)}>
+                    Editar
+                  </Button>
                   {supplier.isActive && (
                     <Button variant="ghost" onClick={() => deactivateMutation.mutate(supplier.id)}>
                       Inativar
