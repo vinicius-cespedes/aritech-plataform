@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { uuidSchema } from "./common";
+import { taxIdSchema, uuidSchema } from "./common";
 
 /**
  * Contato adicional de fornecedor/cliente (docx: "mais de um contato").
@@ -21,7 +21,7 @@ export type ContactInput = z.infer<typeof contactInputSchema>;
 export const createCustomerSchema = z.object({
   name: z.string().min(1),
   tradeName: z.string().optional(),
-  taxId: z.string().optional(),
+  taxId: taxIdSchema,
   stateRegistration: z.string().optional(),
   municipalRegistration: z.string().optional(),
   website: z.string().optional(),
@@ -45,7 +45,7 @@ export const updateCustomerSchema = createCustomerSchema.partial();
 export const createSupplierSchema = z.object({
   name: z.string().min(1),
   tradeName: z.string().optional(),
-  taxId: z.string().optional(),
+  taxId: taxIdSchema,
   stateRegistration: z.string().optional(),
   municipalRegistration: z.string().optional(),
   website: z.string().optional(),
@@ -70,7 +70,7 @@ export const updateSupplierSchema = createSupplierSchema.partial();
 
 export const createEmployeeSchema = z.object({
   name: z.string().min(1),
-  taxId: z.string().optional(),
+  taxId: taxIdSchema,
   employmentType: z.string().optional(),
   role: z.string().optional(),
   costCenterId: uuidSchema.optional(),

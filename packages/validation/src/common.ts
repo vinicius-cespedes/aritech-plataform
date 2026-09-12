@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { validateTaxId } from "@aritech/shared";
 
 /**
  * String decimal na fronteira da API — ADR-007 §29-30.
@@ -24,6 +25,26 @@ export const nonNegativeDecimalStringSchema = decimalStringSchema.refine(
 );
 
 export const uuidSchema = z.string().uuid();
+
+/**
+ * CPF ou CNPJ — opcional, mas quando informado precisa ter 11 (CPF) ou 14
+ * (CNPJ) dígitos e passar no dígito verificador (packages/shared/br-documents).
+ * O frontend já mascara/valida ao digitar; esta é a validação de verdade,
+ * obrigatória no backend (ADR-004 §14).
+ */
+export const taxIdSchema = z
+  .string()
+  .optional()
+  .refine(
+    (value) => {
+      if (!value) return true;
+      const result = validateTaxId(value);
+      return result.complete && result.valid;
+    },
+    {
+      message: "CPF/CNPJ inválido. CPF tem 11 dígitos e CNPJ tem 14, com dígito verificador correto.",
+    },
+  );
 
 export const isoDateSchema = z
   .string()

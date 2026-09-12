@@ -6,6 +6,7 @@ import { api, ApiError } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import { Button, Card, ErrorBanner, Field, Input, PageHeader, Select } from "@/components/ui/primitives";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { TaxIdField } from "@/components/ui/tax-id-field";
 
 interface CostCenter {
   id: string;
@@ -152,9 +153,7 @@ export default function EmployeesPage() {
             <Field label="Nome *">
               <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             </Field>
-            <Field label="CPF">
-              <Input value={form.taxId} onChange={(e) => setForm({ ...form, taxId: e.target.value })} />
-            </Field>
+            <TaxIdField label="CPF" value={form.taxId} onChange={(taxId) => setForm({ ...form, taxId })} />
             <Field label="Vínculo">
               <Select value={form.employmentType} onChange={(e) => setForm({ ...form, employmentType: e.target.value })}>
                 <option value="">Selecione…</option>

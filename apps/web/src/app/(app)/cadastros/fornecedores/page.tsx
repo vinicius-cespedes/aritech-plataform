@@ -6,6 +6,7 @@ import { SUPPLIER_BUSINESS_AREAS } from "@aritech/shared";
 import { api, ApiError } from "@/lib/api";
 import { Button, Card, ErrorBanner, Field, Input, PageHeader, Select } from "@/components/ui/primitives";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { TaxIdField } from "@/components/ui/tax-id-field";
 
 interface Contact {
   id?: string;
@@ -235,9 +236,7 @@ export default function SuppliersPage() {
                 <Field label="Nome fantasia">
                   <Input value={form.tradeName} onChange={(e) => setForm({ ...form, tradeName: e.target.value })} />
                 </Field>
-                <Field label="CNPJ/CPF">
-                  <Input value={form.taxId} onChange={(e) => setForm({ ...form, taxId: e.target.value })} />
-                </Field>
+                <TaxIdField value={form.taxId} onChange={(taxId) => setForm({ ...form, taxId })} />
                 <Field label="Inscrição estadual">
                   <Input
                     value={form.stateRegistration}
