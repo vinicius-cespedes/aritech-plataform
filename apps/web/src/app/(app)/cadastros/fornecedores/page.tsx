@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { SUPPLIER_BUSINESS_AREAS } from "@aritech/shared";
 import { api, ApiError } from "@/lib/api";
-import { Button, Card, ErrorBanner, Field, Input, PageHeader } from "@/components/ui/primitives";
+import { Button, Card, ErrorBanner, Field, Input, PageHeader, Select } from "@/components/ui/primitives";
 import { StatusBadge } from "@/components/ui/status-badge";
 
 interface Contact {
@@ -77,13 +78,17 @@ export default function SuppliersPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [customBusinessArea, setCustomBusinessArea] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const knownBusinessAreas = useMemo<readonly string[]>(() => SUPPLIER_BUSINESS_AREAS, []);
 
   function closeForm() {
     setShowForm(false);
     setEditingId(null);
     setForm(EMPTY_FORM);
     setContacts([]);
+    setCustomBusinessArea(false);
     setError(null);
   }
 
@@ -91,6 +96,7 @@ export default function SuppliersPage() {
     setEditingId(null);
     setForm(EMPTY_FORM);
     setContacts([]);
+    setCustomBusinessArea(false);
     setError(null);
     setShowForm(true);
   }
@@ -118,6 +124,9 @@ export default function SuppliersPage() {
       contactPhone: supplier.contactPhone ?? "",
       notes: supplier.notes ?? "",
     });
+    setCustomBusinessArea(
+      !!supplier.businessArea && !SUPPLIER_BUSINESS_AREAS.includes(supplier.businessArea as (typeof SUPPLIER_BUSINESS_AREAS)[number]),
+    );
     setContacts(
       (supplier.contacts ?? []).map((c) => ({
         id: c.id,
@@ -242,11 +251,34 @@ export default function SuppliersPage() {
                   />
                 </Field>
                 <Field label="Ramo de atividade">
-                  <Input
-                    value={form.businessArea}
-                    onChange={(e) => setForm({ ...form, businessArea: e.target.value })}
-                    placeholder="Ex.: Materiais elétricos"
-                  />
+                  <Select
+                    value={customBusinessArea ? "Outro" : form.businessArea}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (value === "Outro") {
+                        setCustomBusinessArea(true);
+                        setForm({ ...form, businessArea: "" });
+                      } else {
+                        setCustomBusinessArea(false);
+                        setForm({ ...form, businessArea: value });
+                      }
+                    }}
+                  >
+                    <option value="">Selecione…</option>
+                    {knownBusinessAreas.map((area) => (
+                      <option key={area} value={area}>
+                        {area}
+                      </option>
+                    ))}
+                  </Select>
+                  {customBusinessArea && (
+                    <Input
+                      className="mt-2"
+                      placeholder="Especifique o ramo de atividade"
+                      value={form.businessArea}
+                      onChange={(e) => setForm({ ...form, businessArea: e.target.value })}
+                    />
+                  )}
                 </Field>
                 <Field label="Site">
                   <Input value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} placeholder="https://" />

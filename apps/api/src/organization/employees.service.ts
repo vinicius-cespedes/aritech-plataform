@@ -13,12 +13,13 @@ export class EmployeesService {
   list(includeInactive = false) {
     return this.prisma.client.employee.findMany({
       where: includeInactive ? {} : { isActive: true },
+      include: { costCenter: true },
       orderBy: { name: "asc" },
     });
   }
 
   async get(id: string) {
-    const employee = await this.prisma.client.employee.findUnique({ where: { id } });
+    const employee = await this.prisma.client.employee.findUnique({ where: { id }, include: { costCenter: true } });
     if (!employee) throw new NotFoundException({ code: "NOT_FOUND", message: "Colaborador não encontrado." });
     return employee;
   }
