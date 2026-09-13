@@ -6,9 +6,12 @@ import {
   CreateReconciliationMatchesInput,
   reverseReconciliationMatchSchema,
   ReverseReconciliationMatchInput,
+  classifyBankTransactionSchema,
+  ClassifyBankTransactionInput,
 } from "@aritech/validation";
 import { BankStatementsService } from "./bank-statements.service";
 import { ReconciliationService } from "./reconciliation.service";
+import { BankClassificationService } from "./bank-classification.service";
 import { JwtAuthGuard } from "../../auth/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../auth/guards/permissions.guard";
 import { RequirePermissions } from "../../auth/decorators/require-permissions.decorator";
@@ -22,6 +25,7 @@ export class BankController {
   constructor(
     private readonly statements: BankStatementsService,
     private readonly reconciliation: ReconciliationService,
+    private readonly classification: BankClassificationService,
   ) {}
 
   @RequirePermissions("financial.bank.read")
@@ -82,6 +86,16 @@ export class BankController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.reconciliation.createMatches(id, body, user.id);
+  }
+
+  @RequirePermissions("financial.reconciliation.manage")
+  @Post("bank-transactions/:id/classify")
+  classify(
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(classifyBankTransactionSchema)) body: ClassifyBankTransactionInput,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.classification.classify(id, body, user.id);
   }
 
   @RequirePermissions("financial.reconciliation.reverse")
