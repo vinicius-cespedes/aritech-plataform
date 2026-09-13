@@ -20,7 +20,7 @@ export class CashFlowService {
   constructor(private readonly prisma: PrismaService) {}
 
   async summary(): Promise<CashFlowSummary> {
-    const [payments, receipts, openPayables, openReceivables] = await Promise.all([
+    const [payments, receipts, openPayables, openReceivables, otherMatches] = await Promise.all([
       this.prisma.client.payment.aggregate({
         where: { status: { in: ["CONFIRMED", "RECONCILED"] } },
         _sum: { amount: true },
@@ -40,10 +40,26 @@ export class CashFlowService {
         },
         _sum: { openAmount: true },
       }),
+      // Classificações leves de conciliação sem Payment/Receipt (tarifa,
+      // rendimento, adiantamento, diverso — ADR-009 §25/§47-48): também são
+      // caixa realizado, e sem isso ficavam invisíveis no fluxo de caixa.
+      // TRANSFER fica de fora de propósito — não é despesa nem receita, é
+      // neutra no consolidado (ADR-009 §51).
+      this.prisma.client.reconciliationMatch.findMany({
+        where: { status: "ACTIVE", targetType: { in: ["BANK_FEE", "FINANCIAL_INCOME", "ADVANCE", "OTHER"] } },
+        select: { matchedAmount: true, bankTransaction: { select: { direction: true } } },
+      }),
     ]);
 
-    const realizedOutflow = Number(payments._sum.amount ?? 0);
-    const realizedInflow = Number(receipts._sum.amount ?? 0);
+    const otherInflow = otherMatches
+      .filter((m) => m.bankTransaction.direction === "CREDIT")
+      .reduce((sum, m) => sum + Number(m.matchedAmount), 0);
+    const otherOutflow = otherMatches
+      .filter((m) => m.bankTransaction.direction === "DEBIT")
+      .reduce((sum, m) => sum + Number(m.matchedAmount), 0);
+
+    const realizedOutflow = Number(payments._sum.amount ?? 0) + otherOutflow;
+    const realizedInflow = Number(receipts._sum.amount ?? 0) + otherInflow;
     const committedOutflow = Number(openPayables._sum.openAmount ?? 0);
     const committedInflow = Number(openReceivables._sum.openAmount ?? 0);
 

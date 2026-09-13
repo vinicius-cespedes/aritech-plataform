@@ -156,6 +156,11 @@ export default function ReconciliationPage() {
       queryClient.invalidateQueries({ queryKey: ["bank-transactions"] });
       queryClient.invalidateQueries({ queryKey: ["bank-transaction", selectedTxId] });
       queryClient.invalidateQueries({ queryKey: ["bank-transaction-suggestions", selectedTxId] });
+      // A classificação vira caixa realizado imediatamente (Payment/Receipt
+      // já liquidado, ou classificação leve de tarifa/rendimento/etc.) — o
+      // fluxo de caixa precisa refletir isso sem exigir um refresh manual.
+      queryClient.invalidateQueries({ queryKey: ["cashflow-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["cashflow-aging"] });
       setClassifyError(null);
     },
     onError: (err) => setClassifyError(err instanceof ApiError ? err.message : "Erro ao classificar movimentação."),
@@ -228,6 +233,8 @@ export default function ReconciliationPage() {
       queryClient.invalidateQueries({ queryKey: ["bank-transactions"] });
       queryClient.invalidateQueries({ queryKey: ["bank-transaction", selectedTxId] });
       queryClient.invalidateQueries({ queryKey: ["bank-transaction-suggestions", selectedTxId] });
+      queryClient.invalidateQueries({ queryKey: ["cashflow-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["cashflow-aging"] });
       setMatchError(null);
     },
     onError: (err) => setMatchError(err instanceof ApiError ? err.message : "Erro ao confirmar conciliação."),
