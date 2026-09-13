@@ -1,7 +1,8 @@
 "use client";
 
 import clsx from "clsx";
-import type { ButtonHTMLAttributes, InputHTMLAttributes, LabelHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react";
+import { useEffect, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type LabelHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from "react";
+import { createPortal } from "react-dom";
 
 export function Button({
   className,
@@ -99,5 +100,51 @@ export function PageHeader({ title, description, action }: { title: string; desc
       </div>
       {action}
     </div>
+  );
+}
+
+/**
+ * Overlay simples para cadastros rápidos (ex.: "+ Novo fornecedor" no meio
+ * de outro formulário) — não é um <dialog> nativo para manter o mesmo
+ * comportamento previsível em todos os navegadores suportados.
+ *
+ * Renderizado via portal em document.body: o conteúdo do modal quase
+ * sempre inclui seu próprio <form> (o formulário de cadastro rápido), e
+ * este componente é usado no meio de outros formulários (conta a pagar,
+ * conta a receber, classificação de conciliação) — sem o portal, o <form>
+ * do modal ficaria aninhado dentro do <form> da página, o que é HTML
+ * inválido e faz o botão "Cadastrar" submeter o formulário errado.
+ *
+ * O `onSubmit` com `stopPropagation` no wrapper é necessário mesmo com o
+ * portal: o React propaga eventos pela árvore de componentes React, não
+ * pela árvore do DOM — um portal continua "dentro" do formulário externo
+ * em termos de React mesmo renderizando em outro lugar do DOM. Sem isso, o
+ * submit do formulário do modal também dispararia o onSubmit do
+ * formulário que o envolve.
+ */
+export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  if (!mounted) return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      onSubmit={(e) => e.stopPropagation()}
+    >
+      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-lg bg-white shadow-xl">
+        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+          <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600" aria-label="Fechar">
+            ✕
+          </button>
+        </div>
+        <div className="p-5">{children}</div>
+      </div>
+    </div>,
+    document.body,
   );
 }

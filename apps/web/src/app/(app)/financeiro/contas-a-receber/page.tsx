@@ -7,6 +7,7 @@ import { api, ApiError } from "@/lib/api";
 import { formatDate, formatMoney, parseMoneyInput } from "@/lib/format";
 import { Button, Card, ErrorBanner, Field, Input, PageHeader, Select } from "@/components/ui/primitives";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { CustomerPicker } from "@/components/pickers/customer-picker";
 
 interface Receivable {
   id: string;
@@ -15,10 +16,6 @@ interface Receivable {
   originalAmount: string;
   status: string;
   customer: { name: string };
-}
-interface Customer {
-  id: string;
-  name: string;
 }
 interface ManagementAccount {
   id: string;
@@ -32,7 +29,6 @@ export default function ReceivablesPage() {
     queryKey: ["receivables"],
     queryFn: () => api.get<Receivable[]>("/receivables"),
   });
-  const { data: customers } = useQuery({ queryKey: ["customers"], queryFn: () => api.get<Customer[]>("/customers") });
   const { data: managementAccounts } = useQuery({
     queryKey: ["management-accounts"],
     queryFn: () => api.get<ManagementAccount[]>("/management-accounts"),
@@ -87,16 +83,7 @@ export default function ReceivablesPage() {
       {showForm && (
         <Card className="mb-6 p-5">
           <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <Field label="Cliente *">
-              <Select required value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
-                <option value="">Selecione…</option>
-                {customers?.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
+            <CustomerPicker required value={customerId} onChange={setCustomerId} />
             <div className="lg:col-span-2">
               <Field label="Descrição *">
                 <Input required value={description} onChange={(e) => setDescription(e.target.value)} />

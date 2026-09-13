@@ -7,6 +7,8 @@ import { api, ApiError } from "@/lib/api";
 import { formatDate, formatMoney, parseMoneyInput } from "@/lib/format";
 import { Button, Card, ErrorBanner, Field, Input, PageHeader, Select } from "@/components/ui/primitives";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { SupplierPicker } from "@/components/pickers/supplier-picker";
+import { CustomerPicker } from "@/components/pickers/customer-picker";
 
 interface FinancialAccount {
   id: string;
@@ -124,8 +126,6 @@ export default function ReconciliationPage() {
     enabled: !!selectedTxId,
   });
 
-  const { data: suppliers } = useQuery({ queryKey: ["suppliers"], queryFn: () => api.get<NamedOption[]>("/suppliers") });
-  const { data: customers } = useQuery({ queryKey: ["customers"], queryFn: () => api.get<NamedOption[]>("/customers") });
   const { data: costCenters } = useQuery({ queryKey: ["cost-centers"], queryFn: () => api.get<NamedOption[]>("/cost-centers") });
   const { data: resultCenters } = useQuery({ queryKey: ["result-centers"], queryFn: () => api.get<NamedOption[]>("/result-centers") });
   const { data: managementAccounts } = useQuery({
@@ -291,6 +291,207 @@ export default function ReconciliationPage() {
         </div>
       </Card>
 
+      {selectedTxId && selectedTx && (
+        <Card className="mb-6">
+          <div className="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700">
+            Classificar como operação da empresa
+          </div>
+          <div className="p-4">
+            <p className="mb-4 text-sm text-slate-500">
+              Para movimentações sem um pagamento/recebimento já lançado no sistema (o caso mais comum logo após
+              importar o extrato): registre aqui a operação correspondente — fornecedor, cliente, centro de custo ou
+              centro de resultado — e ela já é conciliada automaticamente com esta movimentação bancária.
+            </p>
+
+            <div className="mb-4 flex flex-wrap gap-2">
+              {selectedTx.direction === "DEBIT" && (
+                <Button
+                  type="button"
+                  variant={classifyKind === "SUPPLIER_PAYMENT" ? "primary" : "secondary"}
+                  onClick={() => setClassifyKind("SUPPLIER_PAYMENT")}
+                >
+                  Pagamento a fornecedor
+                </Button>
+              )}
+              {selectedTx.direction === "CREDIT" && (
+                <Button
+                  type="button"
+                  variant={classifyKind === "CUSTOMER_RECEIPT" ? "primary" : "secondary"}
+                  onClick={() => setClassifyKind("CUSTOMER_RECEIPT")}
+                >
+                  Recebimento de cliente
+                </Button>
+              )}
+              <Button type="button" variant={classifyKind === "OTHER" ? "primary" : "secondary"} onClick={() => setClassifyKind("OTHER")}>
+                Outra classificação
+              </Button>
+            </div>
+
+            <ErrorBanner message={classifyError} />
+
+            <form onSubmit={handleClassifySubmit} className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {classifyKind === "SUPPLIER_PAYMENT" && (
+                <>
+                  <SupplierPicker
+                    label="Fornecedor (opcional para tarifas/impostos sem fornecedor)"
+                    value={classifyForm.supplierId}
+                    onChange={(supplierId) => setClassifyForm({ ...classifyForm, supplierId })}
+                  />
+                  <Field label="Centro de custo *">
+                    <Select
+                      required
+                      value={classifyForm.costCenterId}
+                      onChange={(e) => setClassifyForm({ ...classifyForm, costCenterId: e.target.value })}
+                    >
+                      <option value="">Selecione…</option>
+                      {costCenters?.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label="Conta gerencial *">
+                    <Select
+                      required
+                      value={classifyForm.managementAccountId}
+                      onChange={(e) => setClassifyForm({ ...classifyForm, managementAccountId: e.target.value })}
+                    >
+                      <option value="">Selecione…</option>
+                      {postableManagementAccounts.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.code} — {a.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label="Forma de pagamento">
+                    <Select
+                      value={classifyForm.paymentMethod}
+                      onChange={(e) => setClassifyForm({ ...classifyForm, paymentMethod: e.target.value })}
+                    >
+                      {PAYMENT_METHOD_OPTIONS.map((m) => (
+                        <option key={m.value} value={m.value}>
+                          {m.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label="Descrição *">
+                    <Input
+                      required
+                      value={classifyForm.description}
+                      onChange={(e) => setClassifyForm({ ...classifyForm, description: e.target.value })}
+                      placeholder="Ex.: Tarifa mensal conta corrente"
+                    />
+                  </Field>
+                  <Field label="Nº do documento">
+                    <Input
+                      value={classifyForm.documentNumber}
+                      onChange={(e) => setClassifyForm({ ...classifyForm, documentNumber: e.target.value })}
+                    />
+                  </Field>
+                </>
+              )}
+
+              {classifyKind === "CUSTOMER_RECEIPT" && (
+                <>
+                  <CustomerPicker
+                    label="Cliente *"
+                    required
+                    value={classifyForm.customerId}
+                    onChange={(customerId) => setClassifyForm({ ...classifyForm, customerId })}
+                  />
+                  <Field label="Centro de resultado">
+                    <Select
+                      value={classifyForm.resultCenterId}
+                      onChange={(e) => setClassifyForm({ ...classifyForm, resultCenterId: e.target.value })}
+                    >
+                      <option value="">Nenhum</option>
+                      {resultCenters?.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label="Conta gerencial *">
+                    <Select
+                      required
+                      value={classifyForm.managementAccountId}
+                      onChange={(e) => setClassifyForm({ ...classifyForm, managementAccountId: e.target.value })}
+                    >
+                      <option value="">Selecione…</option>
+                      {postableManagementAccounts.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.code} — {a.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label="Forma de recebimento">
+                    <Select
+                      value={classifyForm.receiptMethod}
+                      onChange={(e) => setClassifyForm({ ...classifyForm, receiptMethod: e.target.value })}
+                    >
+                      {PAYMENT_METHOD_OPTIONS.map((m) => (
+                        <option key={m.value} value={m.value}>
+                          {m.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label="Descrição *">
+                    <Input
+                      required
+                      value={classifyForm.description}
+                      onChange={(e) => setClassifyForm({ ...classifyForm, description: e.target.value })}
+                      placeholder="Ex.: Recebimento fatura NF 1234"
+                    />
+                  </Field>
+                  <Field label="Nº do documento">
+                    <Input
+                      value={classifyForm.documentNumber}
+                      onChange={(e) => setClassifyForm({ ...classifyForm, documentNumber: e.target.value })}
+                    />
+                  </Field>
+                </>
+              )}
+
+              {classifyKind === "OTHER" && (
+                <>
+                  <Field label="Tipo">
+                    <Select
+                      value={classifyForm.otherTargetType}
+                      onChange={(e) => setClassifyForm({ ...classifyForm, otherTargetType: e.target.value })}
+                    >
+                      {OTHER_CLASSIFICATION_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label="Observação">
+                    <Input value={classifyForm.note} onChange={(e) => setClassifyForm({ ...classifyForm, note: e.target.value })} />
+                  </Field>
+                </>
+              )}
+
+              <Field label="Valor a classificar">
+                <Input value={classifyForm.amount} onChange={(e) => setClassifyForm({ ...classifyForm, amount: e.target.value })} />
+              </Field>
+
+              <div className="sm:col-span-2">
+                <Button type="submit" disabled={classifyMutation.isPending}>
+                  Classificar e conciliar
+                </Button>
+              </div>
+            </form>
+          </div>
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card>
           <div className="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700">Extrato bancário</div>
@@ -391,220 +592,6 @@ export default function ReconciliationPage() {
           </div>
         </Card>
       </div>
-
-      {selectedTxId && selectedTx && (
-        <Card className="mt-6">
-          <div className="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700">
-            Classificar como operação da empresa
-          </div>
-          <div className="p-4">
-            <p className="mb-4 text-sm text-slate-500">
-              Para movimentações sem um pagamento/recebimento já lançado no sistema (o caso mais comum logo após
-              importar o extrato): registre aqui a operação correspondente — fornecedor, cliente, centro de custo ou
-              centro de resultado — e ela já é conciliada automaticamente com esta movimentação bancária.
-            </p>
-
-            <div className="mb-4 flex flex-wrap gap-2">
-              {selectedTx.direction === "DEBIT" && (
-                <Button
-                  type="button"
-                  variant={classifyKind === "SUPPLIER_PAYMENT" ? "primary" : "secondary"}
-                  onClick={() => setClassifyKind("SUPPLIER_PAYMENT")}
-                >
-                  Pagamento a fornecedor
-                </Button>
-              )}
-              {selectedTx.direction === "CREDIT" && (
-                <Button
-                  type="button"
-                  variant={classifyKind === "CUSTOMER_RECEIPT" ? "primary" : "secondary"}
-                  onClick={() => setClassifyKind("CUSTOMER_RECEIPT")}
-                >
-                  Recebimento de cliente
-                </Button>
-              )}
-              <Button type="button" variant={classifyKind === "OTHER" ? "primary" : "secondary"} onClick={() => setClassifyKind("OTHER")}>
-                Outra classificação
-              </Button>
-            </div>
-
-            <ErrorBanner message={classifyError} />
-
-            <form onSubmit={handleClassifySubmit} className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {classifyKind === "SUPPLIER_PAYMENT" && (
-                <>
-                  <Field label="Fornecedor (opcional para tarifas/impostos sem fornecedor)">
-                    <Select value={classifyForm.supplierId} onChange={(e) => setClassifyForm({ ...classifyForm, supplierId: e.target.value })}>
-                      <option value="">Nenhum / diverso</option>
-                      {suppliers?.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name}
-                        </option>
-                      ))}
-                    </Select>
-                  </Field>
-                  <Field label="Centro de custo *">
-                    <Select
-                      required
-                      value={classifyForm.costCenterId}
-                      onChange={(e) => setClassifyForm({ ...classifyForm, costCenterId: e.target.value })}
-                    >
-                      <option value="">Selecione…</option>
-                      {costCenters?.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </Select>
-                  </Field>
-                  <Field label="Conta gerencial *">
-                    <Select
-                      required
-                      value={classifyForm.managementAccountId}
-                      onChange={(e) => setClassifyForm({ ...classifyForm, managementAccountId: e.target.value })}
-                    >
-                      <option value="">Selecione…</option>
-                      {postableManagementAccounts.map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.code} — {a.name}
-                        </option>
-                      ))}
-                    </Select>
-                  </Field>
-                  <Field label="Forma de pagamento">
-                    <Select
-                      value={classifyForm.paymentMethod}
-                      onChange={(e) => setClassifyForm({ ...classifyForm, paymentMethod: e.target.value })}
-                    >
-                      {PAYMENT_METHOD_OPTIONS.map((m) => (
-                        <option key={m.value} value={m.value}>
-                          {m.label}
-                        </option>
-                      ))}
-                    </Select>
-                  </Field>
-                  <Field label="Descrição *">
-                    <Input
-                      required
-                      value={classifyForm.description}
-                      onChange={(e) => setClassifyForm({ ...classifyForm, description: e.target.value })}
-                      placeholder="Ex.: Tarifa mensal conta corrente"
-                    />
-                  </Field>
-                  <Field label="Nº do documento">
-                    <Input
-                      value={classifyForm.documentNumber}
-                      onChange={(e) => setClassifyForm({ ...classifyForm, documentNumber: e.target.value })}
-                    />
-                  </Field>
-                </>
-              )}
-
-              {classifyKind === "CUSTOMER_RECEIPT" && (
-                <>
-                  <Field label="Cliente *">
-                    <Select
-                      required
-                      value={classifyForm.customerId}
-                      onChange={(e) => setClassifyForm({ ...classifyForm, customerId: e.target.value })}
-                    >
-                      <option value="">Selecione…</option>
-                      {customers?.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </Select>
-                  </Field>
-                  <Field label="Centro de resultado">
-                    <Select
-                      value={classifyForm.resultCenterId}
-                      onChange={(e) => setClassifyForm({ ...classifyForm, resultCenterId: e.target.value })}
-                    >
-                      <option value="">Nenhum</option>
-                      {resultCenters?.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </Select>
-                  </Field>
-                  <Field label="Conta gerencial *">
-                    <Select
-                      required
-                      value={classifyForm.managementAccountId}
-                      onChange={(e) => setClassifyForm({ ...classifyForm, managementAccountId: e.target.value })}
-                    >
-                      <option value="">Selecione…</option>
-                      {postableManagementAccounts.map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.code} — {a.name}
-                        </option>
-                      ))}
-                    </Select>
-                  </Field>
-                  <Field label="Forma de recebimento">
-                    <Select
-                      value={classifyForm.receiptMethod}
-                      onChange={(e) => setClassifyForm({ ...classifyForm, receiptMethod: e.target.value })}
-                    >
-                      {PAYMENT_METHOD_OPTIONS.map((m) => (
-                        <option key={m.value} value={m.value}>
-                          {m.label}
-                        </option>
-                      ))}
-                    </Select>
-                  </Field>
-                  <Field label="Descrição *">
-                    <Input
-                      required
-                      value={classifyForm.description}
-                      onChange={(e) => setClassifyForm({ ...classifyForm, description: e.target.value })}
-                      placeholder="Ex.: Recebimento fatura NF 1234"
-                    />
-                  </Field>
-                  <Field label="Nº do documento">
-                    <Input
-                      value={classifyForm.documentNumber}
-                      onChange={(e) => setClassifyForm({ ...classifyForm, documentNumber: e.target.value })}
-                    />
-                  </Field>
-                </>
-              )}
-
-              {classifyKind === "OTHER" && (
-                <>
-                  <Field label="Tipo">
-                    <Select
-                      value={classifyForm.otherTargetType}
-                      onChange={(e) => setClassifyForm({ ...classifyForm, otherTargetType: e.target.value })}
-                    >
-                      {OTHER_CLASSIFICATION_OPTIONS.map((o) => (
-                        <option key={o.value} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </Select>
-                  </Field>
-                  <Field label="Observação">
-                    <Input value={classifyForm.note} onChange={(e) => setClassifyForm({ ...classifyForm, note: e.target.value })} />
-                  </Field>
-                </>
-              )}
-
-              <Field label="Valor a classificar">
-                <Input value={classifyForm.amount} onChange={(e) => setClassifyForm({ ...classifyForm, amount: e.target.value })} />
-              </Field>
-
-              <div className="sm:col-span-2">
-                <Button type="submit" disabled={classifyMutation.isPending}>
-                  Classificar e conciliar
-                </Button>
-              </div>
-            </form>
-          </div>
-        </Card>
-      )}
     </div>
   );
 }

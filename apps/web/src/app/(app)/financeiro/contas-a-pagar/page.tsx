@@ -5,8 +5,10 @@ import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "@/lib/api";
 import { formatDate, formatMoney, parseMoneyInput } from "@/lib/format";
-import { Button, Card, ErrorBanner, Field, Input, PageHeader, Select } from "@/components/ui/primitives";
+import { Button, Card, ErrorBanner, Field, Input, Label, PageHeader, Select } from "@/components/ui/primitives";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { SupplierPicker } from "@/components/pickers/supplier-picker";
+import { EmployeePicker } from "@/components/pickers/employee-picker";
 
 interface Payable {
   id: string;
@@ -17,10 +19,6 @@ interface Payable {
   supplier?: { name: string } | null;
   employee?: { name: string } | null;
   installments: Array<{ dueDate: string }>;
-}
-interface Supplier {
-  id: string;
-  name: string;
 }
 interface ManagementAccount {
   id: string;
@@ -39,7 +37,6 @@ export default function PayablesPage() {
     queryKey: ["payables"],
     queryFn: () => api.get<Payable[]>("/payables"),
   });
-  const { data: suppliers } = useQuery({ queryKey: ["suppliers"], queryFn: () => api.get<Supplier[]>("/suppliers") });
   const { data: managementAccounts } = useQuery({
     queryKey: ["management-accounts"],
     queryFn: () => api.get<ManagementAccount[]>("/management-accounts"),
@@ -47,7 +44,9 @@ export default function PayablesPage() {
   const { data: costCenters } = useQuery({ queryKey: ["cost-centers"], queryFn: () => api.get<CostCenter[]>("/cost-centers") });
 
   const [showForm, setShowForm] = useState(false);
+  const [beneficiaryKind, setBeneficiaryKind] = useState<"SUPPLIER" | "EMPLOYEE">("SUPPLIER");
   const [supplierId, setSupplierId] = useState("");
+  const [employeeId, setEmployeeId] = useState("");
   const [description, setDescription] = useState("");
   const [competenceDate, setCompetenceDate] = useState("");
   const [firstDueDate, setFirstDueDate] = useState("");
@@ -60,8 +59,9 @@ export default function PayablesPage() {
   const createMutation = useMutation({
     mutationFn: () =>
       api.post<Payable>("/payables", {
-        counterpartyType: "SUPPLIER",
-        supplierId,
+        counterpartyType: beneficiaryKind,
+        supplierId: beneficiaryKind === "SUPPLIER" ? supplierId : undefined,
+        employeeId: beneficiaryKind === "EMPLOYEE" ? employeeId : undefined,
         description,
         competenceDate,
         firstDueDate,
@@ -73,6 +73,8 @@ export default function PayablesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["payables"] });
       setShowForm(false);
+      setSupplierId("");
+      setEmployeeId("");
       setDescription("");
       setAmount("");
       setError(null);
@@ -96,16 +98,30 @@ export default function PayablesPage() {
       {showForm && (
         <Card className="mb-6 p-5">
           <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <Field label="Fornecedor *">
-              <Select required value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
-                <option value="">Selecione…</option>
-                {suppliers?.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
+            <div className="sm:col-span-2 lg:col-span-3">
+              <Label>Beneficiário</Label>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant={beneficiaryKind === "SUPPLIER" ? "primary" : "secondary"}
+                  onClick={() => setBeneficiaryKind("SUPPLIER")}
+                >
+                  Fornecedor
+                </Button>
+                <Button
+                  type="button"
+                  variant={beneficiaryKind === "EMPLOYEE" ? "primary" : "secondary"}
+                  onClick={() => setBeneficiaryKind("EMPLOYEE")}
+                >
+                  Colaborador
+                </Button>
+              </div>
+            </div>
+            {beneficiaryKind === "SUPPLIER" ? (
+              <SupplierPicker required value={supplierId} onChange={setSupplierId} />
+            ) : (
+              <EmployeePicker required value={employeeId} onChange={setEmployeeId} />
+            )}
             <div className="lg:col-span-2">
               <Field label="Descrição *">
                 <Input required value={description} onChange={(e) => setDescription(e.target.value)} />
