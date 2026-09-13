@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import clsx from "clsx";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "@/lib/api";
@@ -99,6 +99,15 @@ export default function ReconciliationPage() {
   const [accountId, setAccountId] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [selectedTxId, setSelectedTxId] = useState<string | null>(null);
+  const classifyPanelRef = useRef<HTMLDivElement>(null);
+
+  // Seleciona a movimentação e leva o usuário até o painel de registro — a
+  // ação "Registrar operação" fica em cada linha do extrato, mas o
+  // formulário em si continua no topo da página (compartilhado, único).
+  function selectAndScrollToClassify(txId: string) {
+    setSelectedTxId(txId);
+    requestAnimationFrame(() => classifyPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [matchError, setMatchError] = useState<string | null>(null);
   const [classifyKind, setClassifyKind] = useState<"SUPPLIER_PAYMENT" | "CUSTOMER_RECEIPT" | "OTHER">("SUPPLIER_PAYMENT");
@@ -299,16 +308,29 @@ export default function ReconciliationPage() {
       </Card>
 
       {selectedTxId && selectedTx && (
-        <Card className="mb-6">
+        <div ref={classifyPanelRef} className="mb-6">
+        <Card>
           <div className="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700">
-            Classificar como operação da empresa
+            Registrar operação realizada
           </div>
           <div className="p-4">
             <p className="mb-4 text-sm text-slate-500">
               Para movimentações sem um pagamento/recebimento já lançado no sistema (o caso mais comum logo após
-              importar o extrato): registre aqui a operação correspondente — fornecedor, cliente, centro de custo ou
-              centro de resultado — e ela já é conciliada automaticamente com esta movimentação bancária.
+              importar o extrato): registre aqui a operação correspondente — com fornecedor, cliente, centro de
+              custo/resultado etc., ou apenas o essencial, se preferir — e ela já entra no histórico, conciliada com
+              esta movimentação bancária e refletida no fluxo de caixa.
             </p>
+
+            <div className="mb-4 flex items-center justify-between gap-4 rounded-md bg-slate-50 p-3 text-sm">
+              <div>
+                <p className="font-medium text-slate-900">{selectedTx.description ?? selectedTx.counterpartyName ?? "—"}</p>
+                <p className="text-slate-600">
+                  {formatDate(selectedTx.transactionDate)} · {selectedTx.direction === "DEBIT" ? "Débito" : "Crédito"} ·{" "}
+                  {formatMoney(selectedTx.amount)} · saldo não registrado: {formatMoney(unreconciledAmount(selectedTx))}
+                </p>
+              </div>
+              <StatusBadge status={selectedTx.reconciliationStatus} />
+            </div>
 
             <div className="mb-4 flex flex-wrap gap-2">
               {selectedTx.direction === "DEBIT" && (
@@ -491,12 +513,13 @@ export default function ReconciliationPage() {
 
               <div className="sm:col-span-2">
                 <Button type="submit" disabled={classifyMutation.isPending}>
-                  Classificar e conciliar
+                  Registrar operação
                 </Button>
               </div>
             </form>
           </div>
         </Card>
+        </div>
       )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -517,20 +540,33 @@ export default function ReconciliationPage() {
               {transactions?.map((tx) => (
                 <tr
                   key={tx.id}
-                  onClick={() => setSelectedTxId(tx.id)}
+                  onClick={() => selectAndScrollToClassify(tx.id)}
                   className={clsx("cursor-pointer", selectedTxId === tx.id ? "bg-brand-50" : "hover:bg-slate-50")}
                 >
                   <td className="px-4 py-3">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-3">
                       <div>
                         <p className="font-medium text-slate-900">{tx.description ?? tx.counterpartyName ?? "—"}</p>
                         <p className="text-xs text-slate-500">{formatDate(tx.transactionDate)}</p>
                       </div>
-                      <div className="text-right">
-                        <p className={tx.direction === "DEBIT" ? "font-medium text-red-600" : "font-medium text-emerald-600"}>
-                          {tx.direction === "DEBIT" ? "-" : "+"} {formatMoney(tx.amount)}
-                        </p>
-                        <StatusBadge status={tx.reconciliationStatus} />
+                      <div className="flex items-center gap-3">
+                        <div className="text-right">
+                          <p className={tx.direction === "DEBIT" ? "font-medium text-red-600" : "font-medium text-emerald-600"}>
+                            {tx.direction === "DEBIT" ? "-" : "+"} {formatMoney(tx.amount)}
+                          </p>
+                          <StatusBadge status={tx.reconciliationStatus} />
+                        </div>
+                        {tx.reconciliationStatus !== "RECONCILED" && (
+                          <Button
+                            variant="secondary"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              selectAndScrollToClassify(tx.id);
+                            }}
+                          >
+                            Registrar operação
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </td>
