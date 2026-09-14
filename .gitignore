@@ -38,3 +38,6 @@ Thumbs.db
 
 # Local storage adapter (dev document uploads)
 apps/api/storage/
+
+# PIDs de iniciar.bat/parar.bat (apenas em tempo de execução)
+scripts/*.pid

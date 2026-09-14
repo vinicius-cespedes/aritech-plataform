@@ -10,8 +10,7 @@ echo e recompila a API e o site. Use sempre que houver uma novidade.
 echo.
 
 echo Encerrando API/Web, se estiverem rodando...
-taskkill /F /FI "WINDOWTITLE eq Aritech API*" >nul 2>&1
-taskkill /F /FI "WINDOWTITLE eq Aritech Web*" >nul 2>&1
+powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\parar.ps1" >nul 2>&1
 
 call pnpm install
 if errorlevel 1 goto :erro

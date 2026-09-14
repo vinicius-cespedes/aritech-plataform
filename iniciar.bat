@@ -1,5 +1,4 @@
 @echo off
-setlocal
 cd /d "%~dp0"
 
 echo ============================================
@@ -23,16 +22,7 @@ if not exist "apps\web\.next" (
   exit /b 1
 )
 
-start "Aritech API" cmd /k "cd /d "%~dp0apps\api" && node dist\main.js"
-timeout /t 3 /nobreak >nul
-start "Aritech Web" cmd /k "cd /d "%~dp0apps\web" && node_modules\.bin\next start"
-timeout /t 3 /nobreak >nul
+powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\iniciar.ps1"
 
-start "" "http://localhost:3000"
-
-echo.
-echo Duas janelas foram abertas: "Aritech API" e "Aritech Web".
-echo Deixe as duas abertas enquanto estiver usando o sistema.
-echo Para encerrar, rode "parar.bat" (ou feche as duas janelas).
 echo.
 pause
