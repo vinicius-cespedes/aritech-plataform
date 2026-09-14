@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
 import { ApiTags } from "@nestjs/swagger";
 import { closePeriodSchema, ClosePeriodInput, reopenPeriodSchema, ReopenPeriodInput } from "@aritech/validation";
 import { PeriodsService } from "./periods.service";
@@ -18,6 +18,14 @@ export class PeriodsController {
   @Get()
   list() {
     return this.service.list();
+  }
+
+  /** Para o Dashboard — tem que vir antes de ":id" para não ser capturada por ele. */
+  @RequirePermissions("financial.report.read")
+  @Get("recent-summary")
+  recentSummary(@Query("months") monthsParam?: string) {
+    const months = monthsParam ? Number(monthsParam) : undefined;
+    return this.service.recentSummary(months && Number.isFinite(months) && months > 0 ? Math.min(months, 24) : undefined);
   }
 
   @RequirePermissions("financial.report.read")

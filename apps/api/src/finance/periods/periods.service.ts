@@ -73,6 +73,36 @@ export class PeriodsService {
     return this.prisma.client.financialPeriod.findMany({ orderBy: [{ year: "desc" }, { month: "desc" }] });
   }
 
+  /**
+   * Situação de fechamento dos últimos N meses — para o Dashboard. Somente
+   * leitura: ao contrário de `findOrCreateForDate`, NÃO cria o
+   * `FinancialPeriod` só por ter sido consultado; um mês sem nenhum
+   * lançamento ainda não tem linha na tabela — é tratado como "OPEN"
+   * implícito (mesmo status que teria se fosse criado agora).
+   */
+  async recentSummary(monthsCount = 3) {
+    const now = new Date();
+    const months = Array.from({ length: monthsCount }, (_, i) => {
+      const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+      return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1 };
+    });
+
+    const existing = await this.prisma.client.financialPeriod.findMany({
+      where: { OR: months.map(({ year, month }) => ({ year, month })) },
+    });
+
+    return months.map(({ year, month }) => {
+      const period = existing.find((p) => p.year === year && p.month === month);
+      return {
+        year,
+        month,
+        periodId: period?.id ?? null,
+        status: period?.status ?? "OPEN",
+        closedAt: period?.closedAt?.toISOString() ?? null,
+      };
+    });
+  }
+
   async get(id: string) {
     const period = await this.prisma.client.financialPeriod.findUnique({
       where: { id },

@@ -35,6 +35,14 @@ export class CashFlowController {
     return this.service.aging();
   }
 
+  /** Próximas operações a acontecer — para o Dashboard. */
+  @RequirePermissions("financial.report.read")
+  @Get("upcoming")
+  upcoming(@Query("limit") limitParam?: string) {
+    const limit = limitParam ? Number(limitParam) : undefined;
+    return this.service.upcoming(limit && Number.isFinite(limit) && limit > 0 ? Math.min(limit, 50) : undefined);
+  }
+
   /** Fluxo de caixa diário — FINANCIAL_MODEL §40. Padrão: últimos 90 dias. */
   @RequirePermissions("financial.report.read")
   @Get("timeseries")

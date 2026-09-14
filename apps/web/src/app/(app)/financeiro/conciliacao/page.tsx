@@ -160,8 +160,8 @@ export default function ReconciliationPage() {
   }, [selectedTx?.id]);
 
   const classifyMutation = useMutation({
-    mutationFn: (payload: Record<string, unknown>) => api.post(`/bank-transactions/${selectedTxId}/classify`, payload),
-    onSuccess: () => {
+    mutationFn: (payload: Record<string, unknown>) => api.post<BankTransactionDetail>(`/bank-transactions/${selectedTxId}/classify`, payload),
+    onSuccess: (updatedTx) => {
       queryClient.invalidateQueries({ queryKey: ["bank-transactions"] });
       queryClient.invalidateQueries({ queryKey: ["bank-transaction", selectedTxId] });
       queryClient.invalidateQueries({ queryKey: ["bank-transaction-suggestions", selectedTxId] });
@@ -171,6 +171,14 @@ export default function ReconciliationPage() {
       queryClient.invalidateQueries({ queryKey: ["cashflow-summary"] });
       queryClient.invalidateQueries({ queryKey: ["cashflow-aging"] });
       setClassifyError(null);
+      // Nunca deixa o formulário pronto para um reenvio acidental com os
+      // mesmos dados: se ficou totalmente registrada, fecha o painel; se
+      // ficou parcial, mantém selecionada mas limpa os campos preenchidos.
+      if (updatedTx.reconciliationStatus === "RECONCILED") {
+        setSelectedTxId(null);
+      } else {
+        setClassifyForm({ ...EMPTY_CLASSIFY_FORM, amount: unreconciledAmount(updatedTx).toFixed(2).replace(".", ",") });
+      }
     },
     onError: (err) => setClassifyError(err instanceof ApiError ? err.message : "Erro ao classificar movimentação."),
   });
@@ -332,6 +340,10 @@ export default function ReconciliationPage() {
               <StatusBadge status={selectedTx.reconciliationStatus} />
             </div>
 
+            {selectedTx.reconciliationStatus === "RECONCILED" ? (
+              <p className="text-sm text-slate-500">Esta movimentação já está totalmente registrada.</p>
+            ) : (
+              <>
             <div className="mb-4 flex flex-wrap gap-2">
               {selectedTx.direction === "DEBIT" && (
                 <Button
@@ -517,6 +529,8 @@ export default function ReconciliationPage() {
                 </Button>
               </div>
             </form>
+              </>
+            )}
           </div>
         </Card>
         </div>

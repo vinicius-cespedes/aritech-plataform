@@ -34,6 +34,14 @@ export interface CashFlowTimeseries {
   transactions: CashFlowTransactionRow[];
 }
 
+export interface CashFlowUpcomingRow {
+  dueDate: string; // YYYY-MM-DD
+  direction: "INFLOW" | "OUTFLOW";
+  amount: string;
+  description: string;
+  counterparty: string | null;
+}
+
 function toDateKey(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
@@ -272,5 +280,50 @@ export class CashFlowService {
       }));
 
     return { payables: withAge(payables), receivables: withAge(receivables) };
+  }
+
+  /**
+   * Próximas operações a acontecer — para o Dashboard: parcelas em aberto com
+   * vencimento a partir de hoje (diferente de aging(), que traz tudo em
+   * aberto, incluindo o que já está atrasado). Pagáveis e recebíveis
+   * mesclados em uma única lista, ordenados pelo vencimento mais próximo.
+   */
+  async upcoming(limit = 8): Promise<CashFlowUpcomingRow[]> {
+    const today = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate()));
+
+    const [payables, receivables] = await Promise.all([
+      this.prisma.client.payableInstallment.findMany({
+        where: { status: { in: ["OPEN", "PARTIALLY_SETTLED"] }, dueDate: { gte: today } },
+        include: { payable: { select: { description: true, supplier: { select: { name: true } }, employee: { select: { name: true } } } } },
+        orderBy: { dueDate: "asc" },
+        take: limit,
+      }),
+      this.prisma.client.receivableInstallment.findMany({
+        where: { status: { in: ["OPEN", "PARTIALLY_SETTLED"] }, dueDate: { gte: today } },
+        include: { receivable: { select: { description: true, customer: { select: { name: true } } } } },
+        orderBy: { dueDate: "asc" },
+        take: limit,
+      }),
+    ]);
+
+    const rows: CashFlowUpcomingRow[] = [
+      ...payables.map((i) => ({
+        dueDate: toDateKey(i.dueDate),
+        direction: "OUTFLOW" as const,
+        amount: i.openAmount.toString(),
+        description: i.payable.description,
+        counterparty: i.payable.supplier?.name ?? i.payable.employee?.name ?? null,
+      })),
+      ...receivables.map((i) => ({
+        dueDate: toDateKey(i.dueDate),
+        direction: "INFLOW" as const,
+        amount: i.openAmount.toString(),
+        description: i.receivable.description,
+        counterparty: i.receivable.customer.name,
+      })),
+    ];
+
+    rows.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+    return rows.slice(0, limit);
   }
 }

@@ -66,6 +66,13 @@ export class BankController {
     return this.reconciliation.listTransactions(financialAccountId, reconciliationStatus);
   }
 
+  /** Para o Dashboard — tem que vir antes de ":id" para não ser capturada por ele. */
+  @RequirePermissions("financial.bank.read")
+  @Get("bank-transactions/pending-summary")
+  pendingSummary() {
+    return this.reconciliation.pendingReconciliationSummary();
+  }
+
   @RequirePermissions("financial.bank.read")
   @Get("bank-transactions/:id")
   getTransaction(@Param("id") id: string) {

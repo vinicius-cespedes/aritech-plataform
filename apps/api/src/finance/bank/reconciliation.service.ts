@@ -36,6 +36,19 @@ export class ReconciliationService {
     });
   }
 
+  /** Quantidade de movimentações ainda sem registro/conciliação — para o Dashboard. */
+  async pendingReconciliationSummary(): Promise<{ pending: number; unreconciledAmount: string }> {
+    const pending = await this.prisma.client.bankTransaction.findMany({
+      where: { reconciliationStatus: { in: ["UNRECONCILED", "SUGGESTED", "PARTIALLY_RECONCILED"] } },
+      include: { matches: { where: { status: "ACTIVE" } } },
+    });
+    const unreconciledAmount = pending.reduce((sum, tx) => {
+      const matched = tx.matches.reduce((s, m) => s + Number(m.matchedAmount), 0);
+      return sum + Math.max(0, Number(tx.amount) - matched);
+    }, 0);
+    return { pending: pending.length, unreconciledAmount: unreconciledAmount.toFixed(4) };
+  }
+
   async getTransaction(id: string) {
     const tx = await this.prisma.client.bankTransaction.findUnique({
       where: { id },
