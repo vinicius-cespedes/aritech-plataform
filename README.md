@@ -119,6 +119,41 @@ Outros comandos úteis: `pnpm build`, `pnpm test`, `pnpm lint`, `pnpm typecheck`
 (todos via Turborepo, cascateando para os pacotes do workspace) e
 `pnpm db:studio` para inspecionar o banco pelo Prisma Studio.
 
+Uso do dia a dia (produção local)
+
+A partir desta fase, `aritech_dev` deixou de ser só um banco de
+desenvolvimento — é onde ficam os dados financeiros reais da Aritech
+(fornecedores, clientes, contas a pagar/receber, extratos importados). O
+PostgreSQL roda como serviço do Windows (inicia sozinho com o computador); a
+API e o site precisam ser iniciados manualmente. Três scripts na raiz do
+repositório cobrem isso sem precisar do terminal:
+
+- `iniciar.bat` — sobe a API e o site (compilados, modo produção) e abre o
+  navegador em `http://localhost:3000`.
+- `parar.bat` — encerra os dois.
+- `atualizar.bat` — depois de uma atualização de código: reinstala
+  dependências, aplica migrações pendentes do banco e recompila tudo. Rode
+  sempre que houver novidade antes de usar `iniciar.bat`.
+
+Banco de testes separado
+
+Qualquer verificação de funcionalidade nova (manual ou automatizada) deve
+rodar contra `aritech_test`, nunca contra `aritech_dev` — que agora guarda
+dados financeiros reais. `aritech_test` já tem as mesmas migrações e o mesmo
+seed de dados mestres (sem nenhum dado financeiro), e pode ser recriado a
+qualquer momento sem risco:
+
+```bash
+DATABASE_URL="postgresql://aritech:aritech@localhost:5432/aritech_test?schema=public" \
+  pnpm --filter @aritech/database exec prisma migrate deploy
+
+DATABASE_URL="postgresql://aritech:aritech@localhost:5432/aritech_test?schema=public" \
+  pnpm --filter @aritech/database exec tsx prisma/seed.ts
+```
+
+Para rodar a API contra ele em paralelo à instância real, use uma porta e um
+`DATABASE_URL` diferentes (ex.: `API_PORT=3002`).
+
 Escopo desta primeira iteração e o que ainda falta estão documentados no
 histórico de commits e podem ser resumidos como: núcleo financeiro (cadastros,
 contas a pagar/receber, pagamentos/recebimentos, conciliação bancária via OFX,

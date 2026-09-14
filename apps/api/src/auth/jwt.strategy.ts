@@ -36,6 +36,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       // ADR-004 §10 — usuários inativos/bloqueados não podem acessar a plataforma.
       throw new UnauthorizedException();
     }
-    return { id: user.id, email: user.email, name: user.name };
+    return { id: user.id, email: user.email, name: user.name, mustChangePassword: user.mustChangePassword };
   }
 }

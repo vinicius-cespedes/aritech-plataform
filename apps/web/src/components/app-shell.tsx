@@ -43,11 +43,22 @@ export function AppShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!loading && !user) {
       router.replace("/login");
+      return;
     }
-  }, [loading, user, router]);
+    // Senha padrão do seed (ou qualquer troca ainda pendente) — força a
+    // troca antes de liberar o resto do sistema, em vez de deixar a flag
+    // mustChangePassword parada sem nenhum jeito de agir sobre ela.
+    if (!loading && user?.mustChangePassword && pathname !== "/alterar-senha") {
+      router.replace("/alterar-senha");
+    }
+  }, [loading, user, pathname, router]);
 
   if (loading || !user) {
     return <div className="flex min-h-screen items-center justify-center text-sm text-slate-500">Carregando…</div>;
+  }
+
+  if (user.mustChangePassword) {
+    return <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6">{children}</div>;
   }
 
   return (

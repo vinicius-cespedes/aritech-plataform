@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { Injectable, UnauthorizedException } from "@nestjs/common";
+import { DomainError } from "@aritech/shared";
 import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
 import { hash as argon2Hash, verify as argon2Verify } from "@node-rs/argon2";
@@ -108,6 +109,46 @@ export class AuthService {
 
   async hashPassword(password: string): Promise<string> {
     return argon2Hash(password);
+  }
+
+  /**
+   * Troca de senha — fecha a lacuna do `mustChangePassword` (setado no seed
+   * do admin, mas até então nunca acionável: não existia nenhuma forma de
+   * efetivamente trocar a senha). Exige a senha atual mesmo quando
+   * `mustChangePassword` está marcado, para não abrir uma janela onde
+   * qualquer requisição autenticada pudesse trocar a senha sem provar
+   * conhecer a atual.
+   */
+  async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
+    const user = await this.prisma.client.user.findUniqueOrThrow({ where: { id: userId } });
+    const valid = await argon2Verify(user.passwordHash, currentPassword);
+    if (!valid) {
+      throw new DomainError("AUTH_INVALID_CURRENT_PASSWORD", "Senha atual incorreta.");
+    }
+
+    const passwordHash = await this.hashPassword(newPassword);
+    await this.prisma.client.user.update({
+      where: { id: userId },
+      data: { passwordHash, mustChangePassword: false },
+    });
+
+    // Revoga todas as sessões (refresh tokens) existentes — uma troca de
+    // senha deve encerrar qualquer sessão obtida com a senha antiga.
+    await this.prisma.client.refreshToken.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+
+    await this.audit.record(undefined, {
+      actorType: "USER",
+      actorUserId: userId,
+      module: "identity",
+      action: "PASSWORD_CHANGED",
+      entityType: "User",
+      entityId: userId,
+      source: "WEB",
+      result: "SUCCESS",
+    });
   }
 
   async recordLoginAudit(params: {

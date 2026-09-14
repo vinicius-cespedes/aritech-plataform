@@ -2,7 +2,7 @@ import { Body, Controller, Get, HttpCode, Post, Req, Res, UnauthorizedException,
 import { ApiTags } from "@nestjs/swagger";
 import { ConfigService } from "@nestjs/config";
 import { Request, Response } from "express";
-import { loginSchema, LoginInput } from "@aritech/validation";
+import { loginSchema, LoginInput, changePasswordSchema, ChangePasswordInput } from "@aritech/validation";
 import { AuthService } from "./auth.service";
 import { Public } from "./decorators/public.decorator";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
@@ -95,5 +95,25 @@ export class AuthController {
   @Get("me")
   me(@CurrentUser() user: AuthenticatedUser) {
     return { user };
+  }
+
+  /**
+   * Troca de senha — o seed do admin já marcava `mustChangePassword: true`,
+   * mas não existia nenhum jeito de efetivamente trocar; a senha padrão
+   * ficava em uso indefinidamente. Encerra todas as sessões (inclusive a
+   * atual) ao final, exigindo login de novo já com a senha nova.
+   */
+  @UseGuards(JwtAuthGuard)
+  @Post("change-password")
+  @HttpCode(200)
+  async changePassword(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(changePasswordSchema)) body: ChangePasswordInput,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    await this.auth.changePassword(user.id, body.currentPassword, body.newPassword);
+    res.clearCookie(ACCESS_COOKIE, { path: "/" });
+    res.clearCookie(REFRESH_COOKIE, { path: "/api/v1/auth" });
+    return { ok: true };
   }
 }
