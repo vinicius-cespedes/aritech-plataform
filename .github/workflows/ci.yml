@@ -32,13 +32,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Precisa vir ANTES do setup-node: a opção cache:pnpm abaixo roda
+      # "pnpm store path" durante o próprio passo de setup-node, então o
+      # pnpm já tem que estar no PATH nesse momento (via corepack, usando
+      # o Node do runner que já vem pronto na imagem ubuntu-latest).
+      - name: Enable corepack / pnpm
+        run: corepack enable
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
-
-      - name: Enable corepack / pnpm
-        run: corepack enable
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
