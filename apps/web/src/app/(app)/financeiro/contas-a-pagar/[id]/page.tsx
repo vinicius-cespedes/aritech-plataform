@@ -7,6 +7,7 @@ import { api, ApiError } from "@/lib/api";
 import { formatDate, formatMoney, parseMoneyInput } from "@/lib/format";
 import { Button, Card, ErrorBanner, Field, Input, PageHeader, Select } from "@/components/ui/primitives";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { PayableClassificationCard, type PayableClassificationData } from "@/components/classification-cards";
 
 interface Installment {
   id: string;
@@ -16,15 +17,10 @@ interface Installment {
   openAmount: string;
   status: string;
 }
-interface PayableDetail {
-  id: string;
-  description: string;
-  status: string;
+interface PayableDetail extends PayableClassificationData {
   originalAmount: string;
   competenceDate: string;
-  supplier?: { name: string } | null;
-  employee?: { name: string } | null;
-  installments: Installment[];
+  installments: Array<Installment & { notes?: string | null }>;
 }
 interface FinancialAccount {
   id: string;
@@ -125,6 +121,8 @@ export default function PayableDetailPage() {
           </div>
         </Card>
       )}
+
+      <PayableClassificationCard key={`${payable.id}-${payable.costCenterId}-${payable.contractId}-${payable.managementAccountId}-${payable.counterpartyType}`} payable={payable} />
 
       <Card className="mb-6">
         <table className="w-full text-sm">

@@ -19,6 +19,9 @@ export const PERMISSIONS = [
   // Financeiro — cadastros de suporte
   "financial.account.read",
   "financial.account.manage",
+  // Contratos e projetos
+  "financial.contract.read",
+  "financial.contract.manage",
   // Contas a pagar
   "financial.payable.read",
   "financial.payable.create",
@@ -31,6 +34,7 @@ export const PERMISSIONS = [
   // Contas a receber
   "financial.receivable.read",
   "financial.receivable.create",
+  "financial.receivable.update",
   "financial.receivable.approve",
   // Recebimentos
   "financial.receipt.create",
@@ -92,6 +96,8 @@ export const ROLE_DEFINITIONS: readonly RoleDefinition[] = [
       "organization.employee.manage",
       "financial.account.read",
       "financial.account.manage",
+      "financial.contract.read",
+      "financial.contract.manage",
       "financial.payable.read",
       "financial.payable.create",
       "financial.payable.update",
@@ -100,6 +106,7 @@ export const ROLE_DEFINITIONS: readonly RoleDefinition[] = [
       "financial.payment.reverse",
       "financial.receivable.read",
       "financial.receivable.create",
+      "financial.receivable.update",
       "financial.receipt.create",
       "financial.receipt.reverse",
       "financial.bank.import",
@@ -115,6 +122,7 @@ export const ROLE_DEFINITIONS: readonly RoleDefinition[] = [
     name: "Consulta",
     permissions: [
       "financial.account.read",
+      "financial.contract.read",
       "financial.payable.read",
       "financial.receivable.read",
       "financial.bank.read",

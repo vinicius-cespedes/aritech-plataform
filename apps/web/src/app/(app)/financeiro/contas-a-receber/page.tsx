@@ -8,6 +8,7 @@ import { formatDate, formatMoney, parseMoneyInput } from "@/lib/format";
 import { Button, Card, ErrorBanner, Field, Input, PageHeader, Select } from "@/components/ui/primitives";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { CustomerPicker } from "@/components/pickers/customer-picker";
+import { ReceivableAllocationFields } from "@/components/allocation-fields";
 
 interface Receivable {
   id: string;
@@ -16,11 +17,17 @@ interface Receivable {
   originalAmount: string;
   status: string;
   customer: { name: string };
+  contract?: { code: string } | null;
+  installments: Array<{ notes?: string | null }>;
 }
 interface ManagementAccount {
   id: string;
   code: string;
   name: string;
+}
+
+function needsReview(installments: Array<{ notes?: string | null }>) {
+  return installments.some((i) => i.notes?.startsWith("Importado automaticamente"));
 }
 
 export default function ReceivablesPage() {
@@ -43,6 +50,9 @@ export default function ReceivablesPage() {
   const [installmentsCount, setInstallmentsCount] = useState(1);
   const [certaintyLevel, setCertaintyLevel] = useState("COMMITTED");
   const [managementAccountId, setManagementAccountId] = useState("");
+  const [contractId, setContractId] = useState("");
+  const [projectId, setProjectId] = useState("");
+  const [onlyToReview, setOnlyToReview] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const createMutation = useMutation({
@@ -56,6 +66,8 @@ export default function ReceivablesPage() {
         installmentsCount,
         certaintyLevel,
         managementAccountId,
+        contractId,
+        projectId: projectId || undefined,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["receivables"] });
@@ -83,7 +95,23 @@ export default function ReceivablesPage() {
       {showForm && (
         <Card className="mb-6 p-5">
           <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <CustomerPicker required value={customerId} onChange={setCustomerId} />
+            <CustomerPicker
+              required
+              value={customerId}
+              onChange={(id) => {
+                setCustomerId(id);
+                setContractId("");
+                setProjectId("");
+              }}
+            />
+            <ReceivableAllocationFields
+              customerId={customerId}
+              value={{ contractId, projectId }}
+              onChange={(v) => {
+                setContractId(v.contractId);
+                setProjectId(v.projectId);
+              }}
+            />
             <div className="lg:col-span-2">
               <Field label="Descrição *">
                 <Input required value={description} onChange={(e) => setDescription(e.target.value)} />
@@ -134,12 +162,18 @@ export default function ReceivablesPage() {
         </Card>
       )}
 
+      <label className="mb-3 flex items-center gap-2 text-sm text-slate-600">
+        <input type="checkbox" checked={onlyToReview} onChange={(e) => setOnlyToReview(e.target.checked)} />
+        Mostrar só os lançamentos a revisar (importados com classificação provisória)
+      </label>
+
       <Card>
         <table className="w-full text-sm">
           <thead className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-4 py-3">Descrição</th>
               <th className="px-4 py-3">Cliente</th>
+              <th className="px-4 py-3">Contrato</th>
               <th className="px-4 py-3">Competência</th>
               <th className="px-4 py-3">Valor</th>
               <th className="px-4 py-3">Situação</th>
@@ -148,19 +182,23 @@ export default function ReceivablesPage() {
           <tbody className="divide-y divide-slate-100">
             {isLoading && (
               <tr>
-                <td className="px-4 py-4 text-slate-500" colSpan={5}>
+                <td className="px-4 py-4 text-slate-500" colSpan={6}>
                   Carregando…
                 </td>
               </tr>
             )}
-            {receivables?.map((receivable) => (
+            {receivables?.filter((r) => !onlyToReview || needsReview(r.installments)).map((receivable) => (
               <tr key={receivable.id} className="cursor-pointer hover:bg-slate-50">
                 <td className="px-4 py-3">
                   <Link href={`/financeiro/contas-a-receber/${receivable.id}`} className="font-medium text-brand-700 hover:underline">
                     {receivable.description}
                   </Link>
+                  {needsReview(receivable.installments) && (
+                    <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">revisar</span>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-slate-600">{receivable.customer?.name}</td>
+                <td className="px-4 py-3 text-slate-600">{receivable.contract?.code ?? "—"}</td>
                 <td className="px-4 py-3 text-slate-600">{formatDate(receivable.competenceDate)}</td>
                 <td className="px-4 py-3 text-slate-600">{formatMoney(receivable.originalAmount)}</td>
                 <td className="px-4 py-3">

@@ -7,6 +7,7 @@ import { api, ApiError } from "@/lib/api";
 import { formatDate, formatMoney, parseMoneyInput } from "@/lib/format";
 import { Button, Card, ErrorBanner, Field, Input, PageHeader, Select } from "@/components/ui/primitives";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { ReceivableClassificationCard, type ReceivableClassificationData } from "@/components/classification-cards";
 
 interface Installment {
   id: string;
@@ -16,14 +17,10 @@ interface Installment {
   openAmount: string;
   status: string;
 }
-interface ReceivableDetail {
-  id: string;
-  description: string;
-  status: string;
+interface ReceivableDetail extends ReceivableClassificationData {
   originalAmount: string;
   competenceDate: string;
-  customer: { name: string };
-  installments: Installment[];
+  installments: Array<Installment & { notes?: string | null }>;
 }
 interface FinancialAccount {
   id: string;
@@ -92,6 +89,8 @@ export default function ReceivableDetailPage() {
       />
 
       <ErrorBanner message={error} />
+
+      <ReceivableClassificationCard key={`${receivable.id}-${receivable.customerId}-${receivable.contractId}-${receivable.managementAccountId}`} receivable={receivable} />
 
       <Card className="mb-6">
         <table className="w-full text-sm">

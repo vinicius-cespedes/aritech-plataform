@@ -4,12 +4,15 @@ import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "@/lib/api";
 import { Button, Card, ErrorBanner, Field, Input, PageHeader } from "@/components/ui/primitives";
+import { flattenTree } from "@/lib/allocation";
 
 interface CostCenter {
   id: string;
   code: string;
   name: string;
   status: string;
+  parentId: string | null;
+  contractId: string | null;
 }
 
 interface ResultCenter {
@@ -17,6 +20,7 @@ interface ResultCenter {
   code: string;
   name: string;
   status: string;
+  parentId: string | null;
 }
 
 function useCenterForm<T>(path: string, queryKey: string) {
@@ -56,7 +60,7 @@ export default function CostCentersPage() {
     <div>
       <PageHeader
         title="Centros de custo e resultado"
-        description="Centro de custo: área interna que consumiu o recurso. Centro de resultado: linha de negócio que gerou a receita — docx §15."
+        description="Centro de custo: área interna que consumiu o recurso; os subcentros de Produção são criados por contrato. Linha de negócio: agrupa os centros de resultado, um por contrato."
       />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -96,10 +100,14 @@ export default function CostCentersPage() {
                     <td className="px-4 py-3 text-slate-500">Carregando…</td>
                   </tr>
                 )}
-                {costCenters?.map((cc) => (
+                {costCenters && flattenTree(costCenters).map((cc) => (
                   <tr key={cc.id}>
                     <td className="w-20 px-4 py-2 font-mono text-slate-700">{cc.code}</td>
-                    <td className="px-4 py-2 text-slate-900">{cc.name}</td>
+                    <td className="px-4 py-2 text-slate-900" style={{ paddingLeft: `${1 + cc.depth * 1.25}rem` }}>
+                      {cc.depth > 0 ? "↳ " : ""}
+                      {cc.name}
+                      {cc.contractId && <span className="ml-2 text-xs text-slate-500">(subcentro de contrato)</span>}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -108,7 +116,7 @@ export default function CostCentersPage() {
         </section>
 
         <section>
-          <h2 className="mb-3 text-sm font-semibold text-slate-700">Centros de resultado / linhas de negócio</h2>
+          <h2 className="mb-3 text-sm font-semibold text-slate-700">Linhas de negócio e centros de resultado</h2>
           <Card className="mb-4 p-4">
             <form
               onSubmit={(e: FormEvent) => {
@@ -143,10 +151,14 @@ export default function CostCentersPage() {
                     <td className="px-4 py-3 text-slate-500">Carregando…</td>
                   </tr>
                 )}
-                {resultCenters?.map((rc) => (
+                {resultCenters && flattenTree(resultCenters).map((rc) => (
                   <tr key={rc.id}>
                     <td className="w-20 px-4 py-2 font-mono text-slate-700">{rc.code}</td>
-                    <td className="px-4 py-2 text-slate-900">{rc.name}</td>
+                    <td className="px-4 py-2 text-slate-900" style={{ paddingLeft: `${1 + rc.depth * 1.25}rem` }}>
+                      {rc.depth > 0 ? "↳ " : ""}
+                      {rc.name}
+                      {rc.depth === 0 && <span className="ml-2 text-xs text-slate-500">(linha de negócio)</span>}
+                    </td>
                   </tr>
                 ))}
               </tbody>

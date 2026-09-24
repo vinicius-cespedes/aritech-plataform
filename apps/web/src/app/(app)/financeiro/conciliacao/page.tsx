@@ -9,6 +9,7 @@ import { Button, Card, ErrorBanner, Field, Input, PageHeader, Select } from "@/c
 import { StatusBadge } from "@/components/ui/status-badge";
 import { SupplierPicker } from "@/components/pickers/supplier-picker";
 import { CustomerPicker } from "@/components/pickers/customer-picker";
+import { CostAllocationFields, ReceivableAllocationFields } from "@/components/allocation-fields";
 
 interface FinancialAccount {
   id: string;
@@ -33,10 +34,6 @@ interface Suggestion {
   confidenceScore: number;
   confidenceLevel: "HIGH" | "MEDIUM" | "LOW";
   criteria: string[];
-}
-interface NamedOption {
-  id: string;
-  name: string;
 }
 interface ManagementAccountOption {
   id: string;
@@ -69,7 +66,8 @@ const EMPTY_CLASSIFY_FORM = {
   supplierId: "",
   customerId: "",
   costCenterId: "",
-  resultCenterId: "",
+  contractId: "",
+  projectId: "",
   managementAccountId: "",
   description: "",
   documentNumber: "",
@@ -135,8 +133,6 @@ export default function ReconciliationPage() {
     enabled: !!selectedTxId,
   });
 
-  const { data: costCenters } = useQuery({ queryKey: ["cost-centers"], queryFn: () => api.get<NamedOption[]>("/cost-centers") });
-  const { data: resultCenters } = useQuery({ queryKey: ["result-centers"], queryFn: () => api.get<NamedOption[]>("/result-centers") });
   const { data: managementAccounts } = useQuery({
     queryKey: ["management-accounts"],
     queryFn: () => api.get<ManagementAccountOption[]>("/management-accounts"),
@@ -193,6 +189,8 @@ export default function ReconciliationPage() {
         kind: "SUPPLIER_PAYMENT",
         supplierId: classifyForm.supplierId || undefined,
         costCenterId: classifyForm.costCenterId,
+        contractId: classifyForm.contractId || undefined,
+        projectId: classifyForm.projectId || undefined,
         managementAccountId: classifyForm.managementAccountId,
         description: classifyForm.description,
         documentNumber: classifyForm.documentNumber || undefined,
@@ -203,7 +201,8 @@ export default function ReconciliationPage() {
       classifyMutation.mutate({
         kind: "CUSTOMER_RECEIPT",
         customerId: classifyForm.customerId,
-        resultCenterId: classifyForm.resultCenterId || undefined,
+        contractId: classifyForm.contractId,
+        projectId: classifyForm.projectId || undefined,
         managementAccountId: classifyForm.managementAccountId,
         description: classifyForm.description,
         documentNumber: classifyForm.documentNumber || undefined,
@@ -378,20 +377,14 @@ export default function ReconciliationPage() {
                     value={classifyForm.supplierId}
                     onChange={(supplierId) => setClassifyForm({ ...classifyForm, supplierId })}
                   />
-                  <Field label="Centro de custo *">
-                    <Select
-                      required
-                      value={classifyForm.costCenterId}
-                      onChange={(e) => setClassifyForm({ ...classifyForm, costCenterId: e.target.value })}
-                    >
-                      <option value="">Selecione…</option>
-                      {costCenters?.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </Select>
-                  </Field>
+                  <CostAllocationFields
+                    value={{
+                      costCenterId: classifyForm.costCenterId,
+                      contractId: classifyForm.contractId,
+                      projectId: classifyForm.projectId,
+                    }}
+                    onChange={(v) => setClassifyForm({ ...classifyForm, ...v })}
+                  />
                   <Field label="Conta gerencial *">
                     <Select
                       required
@@ -441,21 +434,13 @@ export default function ReconciliationPage() {
                     label="Cliente *"
                     required
                     value={classifyForm.customerId}
-                    onChange={(customerId) => setClassifyForm({ ...classifyForm, customerId })}
+                    onChange={(customerId) => setClassifyForm({ ...classifyForm, customerId, contractId: "", projectId: "" })}
                   />
-                  <Field label="Centro de resultado">
-                    <Select
-                      value={classifyForm.resultCenterId}
-                      onChange={(e) => setClassifyForm({ ...classifyForm, resultCenterId: e.target.value })}
-                    >
-                      <option value="">Nenhum</option>
-                      {resultCenters?.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </Select>
-                  </Field>
+                  <ReceivableAllocationFields
+                    customerId={classifyForm.customerId}
+                    value={{ contractId: classifyForm.contractId, projectId: classifyForm.projectId }}
+                    onChange={(v) => setClassifyForm({ ...classifyForm, ...v })}
+                  />
                   <Field label="Conta gerencial *">
                     <Select
                       required

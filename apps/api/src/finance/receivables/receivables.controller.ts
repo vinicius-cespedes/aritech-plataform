@@ -1,6 +1,11 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { ApiTags } from "@nestjs/swagger";
-import { createReceivableSchema, CreateReceivableInput } from "@aritech/validation";
+import {
+  createReceivableSchema,
+  CreateReceivableInput,
+  updateReceivableClassificationSchema,
+  UpdateReceivableClassificationInput,
+} from "@aritech/validation";
 import { ReceivablesService } from "./receivables.service";
 import { JwtAuthGuard } from "../../auth/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../auth/guards/permissions.guard";
@@ -30,6 +35,16 @@ export class ReceivablesController {
   @Post()
   create(@Body(new ZodValidationPipe(createReceivableSchema)) body: CreateReceivableInput, @CurrentUser() user: AuthenticatedUser) {
     return this.service.create(body, user.id);
+  }
+
+  @RequirePermissions("financial.receivable.update")
+  @Patch(":id/classification")
+  updateClassification(
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(updateReceivableClassificationSchema)) body: UpdateReceivableClassificationInput,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.updateClassification(id, body, user.id);
   }
 
   @RequirePermissions("financial.receivable.create")

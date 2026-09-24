@@ -20,6 +20,7 @@ const NAV_SECTIONS: Array<{ title: string; items: Array<{ href: string; label: s
       { href: "/cadastros/colaboradores", label: "Colaboradores" },
       { href: "/cadastros/contas-financeiras", label: "Contas financeiras" },
       { href: "/cadastros/plano-de-contas", label: "Plano de contas" },
+      { href: "/cadastros/contratos", label: "Contratos" },
       { href: "/cadastros/centros-de-custo", label: "Centros de custo" },
     ],
   },

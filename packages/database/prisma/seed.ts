@@ -152,7 +152,7 @@ async function main() {
   const financialAccounts = [
     { name: "Santander — Conta Corrente", type: "CHECKING" as const, institutionName: "Santander" },
     { name: "Safra — Conta Corrente", type: "CHECKING" as const, institutionName: "Safra" },
-    { name: "Caixa — Conta Corrente", type: "CHECKING" as const, institutionName: "Caixa Econômica Federal" },
+    { name: "XP — Investimentos", type: "INVESTMENT" as const, institutionName: "XP Investimentos" },
     { name: "Aplicação Financeira", type: "INVESTMENT" as const, institutionName: "Santander" },
   ];
   for (const acc of financialAccounts) {

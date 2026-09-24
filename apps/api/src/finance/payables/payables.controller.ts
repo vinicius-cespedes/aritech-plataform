@@ -1,6 +1,13 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { ApiTags } from "@nestjs/swagger";
-import { createPayableSchema, CreatePayableInput, rejectPayableSchema, RejectPayableInput } from "@aritech/validation";
+import {
+  createPayableSchema,
+  CreatePayableInput,
+  rejectPayableSchema,
+  RejectPayableInput,
+  updatePayableClassificationSchema,
+  UpdatePayableClassificationInput,
+} from "@aritech/validation";
 import { PayablesService } from "./payables.service";
 import { JwtAuthGuard } from "../../auth/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../auth/guards/permissions.guard";
@@ -30,6 +37,16 @@ export class PayablesController {
   @Post()
   create(@Body(new ZodValidationPipe(createPayableSchema)) body: CreatePayableInput, @CurrentUser() user: AuthenticatedUser) {
     return this.service.create(body, user.id);
+  }
+
+  @RequirePermissions("financial.payable.update")
+  @Patch(":id/classification")
+  updateClassification(
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(updatePayableClassificationSchema)) body: UpdatePayableClassificationInput,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.updateClassification(id, body, user.id);
   }
 
   @RequirePermissions("financial.payable.approve")

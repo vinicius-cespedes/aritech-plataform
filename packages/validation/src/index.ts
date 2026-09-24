@@ -2,6 +2,7 @@ export * from "./common";
 export * from "./auth";
 export * from "./organization";
 export * from "./finance/accounts";
+export * from "./finance/contracts";
 export * from "./finance/payables";
 export * from "./finance/payments";
 export * from "./finance/receivables";

@@ -50,6 +50,9 @@ export const classifyBankTransactionSchema = z.discriminatedUnion("kind", [
     kind: z.literal("SUPPLIER_PAYMENT"),
     supplierId: uuidSchema.optional(),
     costCenterId: uuidSchema,
+    // Obrigatório quando o centro de custo é de Produção (validado no serviço).
+    contractId: uuidSchema.optional(),
+    projectId: uuidSchema.optional(),
     managementAccountId: uuidSchema,
     description: z.string().min(1),
     documentNumber: z.string().optional(),
@@ -59,7 +62,8 @@ export const classifyBankTransactionSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("CUSTOMER_RECEIPT"),
     customerId: uuidSchema,
-    resultCenterId: uuidSchema.optional(),
+    contractId: uuidSchema,
+    projectId: uuidSchema.optional(),
     managementAccountId: uuidSchema,
     description: z.string().min(1),
     documentNumber: z.string().optional(),

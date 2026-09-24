@@ -330,13 +330,21 @@ model Contract {
   endDate     DateTime?
   amount      Decimal?       @db.Decimal(19, 4)
   status      ContractStatus @default(ACTIVE)
+  // Centro de resultado próprio do contrato — filho de uma linha de negócio
+  // (ResultCenter de nível 1). A linha de negócio é derivada de resultCenter.parent.
+  resultCenterId String?
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 
-  customer    Customer     @relation(fields: [customerId], references: [id])
-  projects    Project[]
-  payables    Payable[]
-  receivables Receivable[]
+  customer     Customer      @relation(fields: [customerId], references: [id])
+  resultCenter ResultCenter? @relation(fields: [resultCenterId], references: [id])
+  // Subcentro de custo de Produção dedicado a este contrato (no máximo um).
+  costCenter   CostCenter?
+  projects     Project[]
+  payables     Payable[]
+  receivables  Receivable[]
+
+  @@index([resultCenterId])
 
   @@map("contracts")
 }
@@ -468,11 +476,14 @@ model CostCenter {
   status    CostCenterStatus  @default(ACTIVE)
   validFrom DateTime?
   validUntil DateTime?
+  // Preenchido nos subcentros de Produção criados por contrato.
+  contractId String?          @unique
   createdAt DateTime          @default(now())
   updatedAt DateTime          @updatedAt
 
   parent    CostCenter?  @relation("CostCenterTree", fields: [parentId], references: [id])
   children  CostCenter[] @relation("CostCenterTree")
+  contract  Contract?    @relation(fields: [contractId], references: [id])
   payables  Payable[]
   employees Employee[]
 
@@ -496,6 +507,7 @@ model ResultCenter {
   parent      ResultCenter?  @relation("ResultCenterTree", fields: [parentId], references: [id])
   children    ResultCenter[] @relation("ResultCenterTree")
   receivables Receivable[]
+  contracts   Contract[]
 
   @@map("result_centers")
 }

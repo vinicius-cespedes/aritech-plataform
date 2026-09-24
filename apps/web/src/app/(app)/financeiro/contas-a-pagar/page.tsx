@@ -9,6 +9,7 @@ import { Button, Card, ErrorBanner, Field, Input, Label, PageHeader, Select } fr
 import { StatusBadge } from "@/components/ui/status-badge";
 import { SupplierPicker } from "@/components/pickers/supplier-picker";
 import { EmployeePicker } from "@/components/pickers/employee-picker";
+import { CostAllocationFields, type CostAllocationValue } from "@/components/allocation-fields";
 
 interface Payable {
   id: string;
@@ -18,17 +19,18 @@ interface Payable {
   status: string;
   supplier?: { name: string } | null;
   employee?: { name: string } | null;
-  installments: Array<{ dueDate: string }>;
+  costCenter?: { code: string; name: string } | null;
+  contract?: { code: string; customer: { name: string } } | null;
+  installments: Array<{ dueDate: string; notes?: string | null }>;
 }
 interface ManagementAccount {
   id: string;
   code: string;
   name: string;
 }
-interface CostCenter {
-  id: string;
-  code: string;
-  name: string;
+
+function needsReview(installments: Array<{ notes?: string | null }>) {
+  return installments.some((i) => i.notes?.startsWith("Importado automaticamente"));
 }
 
 export default function PayablesPage() {
@@ -41,7 +43,6 @@ export default function PayablesPage() {
     queryKey: ["management-accounts"],
     queryFn: () => api.get<ManagementAccount[]>("/management-accounts"),
   });
-  const { data: costCenters } = useQuery({ queryKey: ["cost-centers"], queryFn: () => api.get<CostCenter[]>("/cost-centers") });
 
   const [showForm, setShowForm] = useState(false);
   const [beneficiaryKind, setBeneficiaryKind] = useState<"SUPPLIER" | "EMPLOYEE">("SUPPLIER");
@@ -53,7 +54,8 @@ export default function PayablesPage() {
   const [amount, setAmount] = useState("");
   const [installmentsCount, setInstallmentsCount] = useState(1);
   const [managementAccountId, setManagementAccountId] = useState("");
-  const [costCenterId, setCostCenterId] = useState("");
+  const [allocation, setAllocation] = useState<CostAllocationValue>({ costCenterId: "", contractId: "", projectId: "" });
+  const [onlyToReview, setOnlyToReview] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const createMutation = useMutation({
@@ -68,7 +70,9 @@ export default function PayablesPage() {
         originalAmount: parseMoneyInput(amount),
         installmentsCount,
         managementAccountId,
-        costCenterId,
+        costCenterId: allocation.costCenterId,
+        contractId: allocation.contractId || undefined,
+        projectId: allocation.projectId || undefined,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["payables"] });
@@ -137,16 +141,7 @@ export default function PayablesPage() {
                 ))}
               </Select>
             </Field>
-            <Field label="Centro de custo *">
-              <Select required value={costCenterId} onChange={(e) => setCostCenterId(e.target.value)}>
-                <option value="">Selecione…</option>
-                {costCenters?.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.code} — {c.name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
+            <CostAllocationFields value={allocation} onChange={setAllocation} />
             <Field label="Valor total (R$) *">
               <Input required value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="1.000,00" />
             </Field>
@@ -176,12 +171,19 @@ export default function PayablesPage() {
         </Card>
       )}
 
+      <label className="mb-3 flex items-center gap-2 text-sm text-slate-600">
+        <input type="checkbox" checked={onlyToReview} onChange={(e) => setOnlyToReview(e.target.checked)} />
+        Mostrar só os lançamentos a revisar (importados com classificação provisória)
+      </label>
+
       <Card>
         <table className="w-full text-sm">
           <thead className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-4 py-3">Descrição</th>
               <th className="px-4 py-3">Beneficiário</th>
+              <th className="px-4 py-3">Centro de custo</th>
+              <th className="px-4 py-3">Contrato</th>
               <th className="px-4 py-3">Competência</th>
               <th className="px-4 py-3">Valor</th>
               <th className="px-4 py-3">Situação</th>
@@ -190,19 +192,24 @@ export default function PayablesPage() {
           <tbody className="divide-y divide-slate-100">
             {isLoading && (
               <tr>
-                <td className="px-4 py-4 text-slate-500" colSpan={5}>
+                <td className="px-4 py-4 text-slate-500" colSpan={7}>
                   Carregando…
                 </td>
               </tr>
             )}
-            {payables?.map((payable) => (
+            {payables?.filter((p) => !onlyToReview || needsReview(p.installments)).map((payable) => (
               <tr key={payable.id} className="cursor-pointer hover:bg-slate-50">
                 <td className="px-4 py-3">
                   <Link href={`/financeiro/contas-a-pagar/${payable.id}`} className="font-medium text-brand-700 hover:underline">
                     {payable.description}
                   </Link>
+                  {needsReview(payable.installments) && (
+                    <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">revisar</span>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-slate-600">{payable.supplier?.name ?? payable.employee?.name ?? "—"}</td>
+                <td className="px-4 py-3 text-slate-600">{payable.costCenter ? `${payable.costCenter.code} — ${payable.costCenter.name}` : "—"}</td>
+                <td className="px-4 py-3 text-slate-600">{payable.contract ? `${payable.contract.code} (${payable.contract.customer.name})` : "—"}</td>
                 <td className="px-4 py-3 text-slate-600">{formatDate(payable.competenceDate)}</td>
                 <td className="px-4 py-3 text-slate-600">{formatMoney(payable.originalAmount)}</td>
                 <td className="px-4 py-3">

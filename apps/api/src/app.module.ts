@@ -8,6 +8,7 @@ import { AuthModule } from "./auth/auth.module";
 import { OrganizationModule } from "./organization/organization.module";
 import { DocumentsModule } from "./documents/documents.module";
 import { AccountsModule } from "./finance/accounts/accounts.module";
+import { ContractsModule } from "./finance/contracts/contracts.module";
 import { PayablesModule } from "./finance/payables/payables.module";
 import { PaymentsModule } from "./finance/payments/payments.module";
 import { ReceivablesModule } from "./finance/receivables/receivables.module";
@@ -28,6 +29,7 @@ import { CashFlowModule } from "./finance/cashflow/cashflow.module";
     OrganizationModule,
     DocumentsModule,
     AccountsModule,
+    ContractsModule,
     PeriodsModule,
     PayablesModule,
     PaymentsModule,

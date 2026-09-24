@@ -79,6 +79,22 @@ export const createPayableSchema = z
   });
 export type CreatePayableInput = z.infer<typeof createPayableSchema>;
 
+/**
+ * Edição da classificação de uma Conta a Pagar (usada para revisar lançamentos
+ * importados). Valores e parcelas não são editáveis aqui. `null` limpa o vínculo.
+ */
+export const updatePayableClassificationSchema = z.object({
+  description: z.string().min(1).optional(),
+  counterpartyType: counterpartyTypeSchema.optional(),
+  supplierId: uuidSchema.nullable().optional(),
+  employeeId: uuidSchema.nullable().optional(),
+  costCenterId: uuidSchema.optional(),
+  managementAccountId: uuidSchema.optional(),
+  contractId: uuidSchema.nullable().optional(),
+  projectId: uuidSchema.nullable().optional(),
+});
+export type UpdatePayableClassificationInput = z.infer<typeof updatePayableClassificationSchema>;
+
 export const rejectPayableSchema = z.object({
   reason: z.string().min(1, "Justificativa é obrigatória para reprovação — docx §9."),
 });

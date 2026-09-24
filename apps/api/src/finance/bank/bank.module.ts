@@ -4,9 +4,10 @@ import { BankStatementsService } from "./bank-statements.service";
 import { ReconciliationService } from "./reconciliation.service";
 import { BankClassificationService } from "./bank-classification.service";
 import { PeriodsModule } from "../periods/periods.module";
+import { ContractsModule } from "../contracts/contracts.module";
 
 @Module({
-  imports: [PeriodsModule],
+  imports: [PeriodsModule, ContractsModule],
   controllers: [BankController],
   providers: [BankStatementsService, ReconciliationService, BankClassificationService],
   exports: [BankStatementsService, ReconciliationService, BankClassificationService],

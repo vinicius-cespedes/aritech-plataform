@@ -28,11 +28,21 @@ export const createReceivableSchema = z.object({
   certaintyLevel: receivableCertaintyLevelSchema.default("COMMITTED"),
   sourceType: receivableSourceTypeSchema.default("MANUAL_ENTRY"),
   projectId: uuidSchema.optional(),
-  resultCenterId: uuidSchema.optional(),
   managementAccountId: uuidSchema,
-  contractId: uuidSchema.optional(),
+  // Todo recebimento pertence a um contrato; o centro de resultado (e a linha
+  // de negócio) são derivados dele.
+  contractId: uuidSchema,
   installmentsCount: z.number().int().min(1).default(1),
   firstDueDate: isoDateSchema,
   installmentIntervalDays: z.number().int().min(1).default(30),
 });
 export type CreateReceivableInput = z.infer<typeof createReceivableSchema>;
+
+export const updateReceivableClassificationSchema = z.object({
+  description: z.string().min(1).optional(),
+  customerId: uuidSchema.optional(),
+  managementAccountId: uuidSchema.optional(),
+  contractId: uuidSchema.optional(),
+  projectId: uuidSchema.nullable().optional(),
+});
+export type UpdateReceivableClassificationInput = z.infer<typeof updateReceivableClassificationSchema>;

@@ -5,6 +5,7 @@ import { PrismaService } from "../../common/prisma/prisma.service";
 import { AuditService } from "../../audit/audit.service";
 import { PeriodsService } from "../periods/periods.service";
 import { ReconciliationService } from "./reconciliation.service";
+import { AllocationService } from "../contracts/allocation.service";
 
 /**
  * Classifica uma movimentação bancária importada como uma operação real da
@@ -27,6 +28,7 @@ export class BankClassificationService {
     private readonly audit: AuditService,
     private readonly periods: PeriodsService,
     private readonly reconciliation: ReconciliationService,
+    private readonly allocation: AllocationService,
   ) {}
 
   async classify(bankTransactionId: string, input: ClassifyBankTransactionInput, actorUserId: string) {
@@ -66,6 +68,11 @@ export class BankClassificationService {
           );
         }
 
+        const costAllocation = await this.allocation.resolveCostAllocation(db, {
+          costCenterId: input.costCenterId,
+          contractId: input.contractId,
+          projectId: input.projectId,
+        });
         const payable = await db.payable.create({
           data: {
             counterpartyType: input.supplierId ? "SUPPLIER" : "OTHER",
@@ -78,7 +85,9 @@ export class BankClassificationService {
             currency: tx.currency,
             status: "OPEN",
             sourceType: "MANUAL_ENTRY",
-            costCenterId: input.costCenterId,
+            costCenterId: costAllocation.costCenterId,
+            contractId: costAllocation.contractId,
+            projectId: costAllocation.projectId,
             managementAccountId: input.managementAccountId,
             createdById: actorUserId,
             installments: {
@@ -143,6 +152,11 @@ export class BankClassificationService {
           );
         }
 
+        const receivableAllocation = await this.allocation.resolveReceivableAllocation(db, {
+          customerId: input.customerId,
+          contractId: input.contractId,
+          projectId: input.projectId,
+        });
         const receivable = await db.receivable.create({
           data: {
             customerId: input.customerId,
@@ -155,7 +169,9 @@ export class BankClassificationService {
             status: "OPEN",
             certaintyLevel: "COMMITTED",
             sourceType: "MANUAL_ENTRY",
-            resultCenterId: input.resultCenterId,
+            resultCenterId: receivableAllocation.resultCenterId,
+            contractId: receivableAllocation.contractId,
+            projectId: receivableAllocation.projectId,
             managementAccountId: input.managementAccountId,
             createdById: actorUserId,
             installments: {
